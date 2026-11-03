@@ -30,6 +30,7 @@ import com.fabulousotter.gotr.model.Altar;
 import com.fabulousotter.gotr.model.CellTier;
 import com.fabulousotter.gotr.model.CombinationRune;
 import com.fabulousotter.gotr.model.PouchType;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -268,6 +269,8 @@ public class StateTracker
 	private final Map<WorldPoint, Integer> barrierHealth = new HashMap<>();
 	// Barriers whose NPC unloaded with the player too far away to see them, as last seen.
 	private final Map<WorldPoint, BarrierState> unseenBarriers = new HashMap<>();
+	// The runes combination runes are made from: the one the altar is not.
+	private static final List<Altar> BASE_RUNES = ImmutableList.of(Altar.AIR, Altar.WATER);
 	// The client keeps NPCs within about 15 tiles of the player.
 	private static final int NPC_VIEW_TILES = 14;
 
@@ -1457,16 +1460,16 @@ public class StateTracker
 		}
 
 		int depositable = 0;
-		int baseCount = 0;
-		Altar baseRune = baseRuneCarried();
+		Map<Altar, Integer> baseRunes = new EnumMap<>(Altar.class);
 		Set<String> keep = runesToKeep();
 		List<String> kept = new ArrayList<>();
 		for (Map.Entry<Integer, Integer> stack : runeStacks.entrySet())
 		{
 			String name = runeNames.get(stack.getKey());
-			if (baseRune != null && stack.getKey() == baseRune.getRuneItemId())
+			Altar base = BASE_RUNES.stream().filter(a -> a.getRuneItemId() == stack.getKey()).findFirst().orElse(null);
+			if (base != null)
 			{
-				baseCount = stack.getValue();
+				baseRunes.put(base, stack.getValue());
 			}
 			else if (keep.contains(name))
 			{
@@ -1540,8 +1543,7 @@ public class StateTracker
 			.talismans(ImmutableSet.copyOf(talismans))
 			.depositableRunes(depositable)
 			.keptRunes(kept)
-			.baseRune(baseRune)
-			.baseRuneCount(baseCount)
+			.baseRunes(baseRunes)
 			.pouches(pouches)
 			.bindingNecklaceWorn(bindingNecklaceWorn)
 			.necklaceCharges(client.getVarpValue(VarPlayerID.NECKLACE_OF_BINDING))
@@ -1599,13 +1601,6 @@ public class StateTracker
 		}
 		runesToKeep = ImmutableSet.copyOf(names);
 		return runesToKeep;
-	}
-
-	private Altar baseRuneCarried()
-	{
-		int air = runeStacks.getOrDefault(Altar.AIR.getRuneItemId(), 0);
-		int water = runeStacks.getOrDefault(Altar.WATER.getRuneItemId(), 0);
-		return water > air ? Altar.WATER : Altar.AIR;
 	}
 
 	private int endTick()

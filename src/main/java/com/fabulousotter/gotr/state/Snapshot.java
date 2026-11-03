@@ -27,6 +27,7 @@ package com.fabulousotter.gotr.state;
 import com.fabulousotter.gotr.model.Alignment;
 import com.fabulousotter.gotr.model.Altar;
 import com.fabulousotter.gotr.model.CellTier;
+import com.fabulousotter.gotr.model.CombinationRune;
 import com.fabulousotter.gotr.plan.Step;
 import com.fabulousotter.gotr.plan.Target;
 import com.google.common.collect.ImmutableList;
@@ -109,9 +110,9 @@ public class Snapshot
 	// Runes carried that the settings say to keep, by lower-case name ("earth", "astral").
 	@Builder.Default
 	List<String> keptRunes = ImmutableList.of();
-	@Nullable
-	Altar baseRune;
-	int baseRuneCount;
+	// Air and water runes carried, the bases of combination runes.
+	@Builder.Default
+	Map<Altar, Integer> baseRunes = ImmutableMap.of();
 	@Builder.Default
 	List<PouchState> pouches = ImmutableList.of();
 
@@ -204,6 +205,25 @@ public class Snapshot
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * The carried base rune that makes a combination rune at this altar, the larger stack when
+	 * both do, or null when none does.
+	 */
+	@Nullable
+	public Altar baseRuneFor(Altar altar)
+	{
+		Altar best = null;
+		for (Map.Entry<Altar, Integer> base : baseRunes.entrySet())
+		{
+			boolean makesOne = base.getValue() > 0 && CombinationRune.of(altar, base.getKey()) != null;
+			if (makesOne && (best == null || base.getValue() > baseRunes.get(best)))
+			{
+				best = base.getKey();
+			}
+		}
+		return best;
 	}
 
 	public int essenceTotal()

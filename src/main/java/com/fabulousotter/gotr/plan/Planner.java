@@ -871,10 +871,13 @@ public class Planner
 	private static String runesToKeep(Snapshot s)
 	{
 		List<String> names = new ArrayList<>();
-		if (s.getBaseRuneCount() > 0)
+		s.getBaseRunes().forEach((base, count) ->
 		{
-			names.add(s.getBaseRune().getLabel().toLowerCase());
-		}
+			if (count > 0)
+			{
+				names.add(base.getLabel().toLowerCase());
+			}
+		});
 		names.addAll(s.getKeptRunes());
 		if (names.isEmpty())
 		{
@@ -963,7 +966,8 @@ public class Planner
 		if (combo != null)
 		{
 			headline = "Craft " + combo.getLabel().toLowerCase() + " runes";
-			items.add(s.getBaseRune().getRuneItemId());
+			Altar base = s.baseRuneFor(altar);
+			items.add(base.getRuneItemId());
 			if (!s.isMagicImbueActive() && s.isLunarSpellbook())
 			{
 				detail.append("Cast Magic Imbue, then use ");
@@ -972,7 +976,7 @@ public class Planner
 			{
 				detail.append("Use ");
 			}
-			detail.append(s.getBaseRune().getLabel().toLowerCase()).append(" runes on the altar");
+			detail.append(base.getLabel().toLowerCase()).append(" runes on the altar");
 		}
 		else
 		{

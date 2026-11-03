@@ -46,8 +46,6 @@ public class PlannerSettings
 	@Builder.Default
 	boolean combinationRunes = false;
 	@Builder.Default
-	Altar baseRune = Altar.AIR;
-	@Builder.Default
 	boolean balanceWithSavedPoints = true;
 	@Builder.Default
 	int maxImbalance = 200;

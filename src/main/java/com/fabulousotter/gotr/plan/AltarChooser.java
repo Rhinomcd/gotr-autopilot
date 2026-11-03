@@ -126,20 +126,21 @@ class AltarChooser
 	@Nullable
 	static CombinationRune combinationAt(Altar altar, Snapshot s, PlannerSettings c)
 	{
-		if (!c.isCombinationRunes() || altar.getAlignment() != Alignment.ELEMENTAL || s.getBaseRune() == null)
+		Altar base = s.baseRuneFor(altar);
+		if (!c.isCombinationRunes() || altar.getAlignment() != Alignment.ELEMENTAL || base == null)
 		{
 			return null;
 		}
-		CombinationRune combo = CombinationRune.of(altar, s.getBaseRune());
+		CombinationRune combo = CombinationRune.of(altar, base);
 		if (combo == null || combo.getLevelRequired() > s.getRunecraftLevel())
 		{
 			return null;
 		}
-		if (s.getBaseRuneCount() <= 0 || !s.isBindingNecklaceWorn() || s.getNecklaceCharges() <= 0)
+		if (!s.isBindingNecklaceWorn() || s.getNecklaceCharges() <= 0)
 		{
 			return null;
 		}
-		if (!s.isLunarSpellbook() && !s.getTalismans().contains(s.getBaseRune()))
+		if (!s.isLunarSpellbook() && !s.getTalismans().contains(base))
 		{
 			return null;
 		}

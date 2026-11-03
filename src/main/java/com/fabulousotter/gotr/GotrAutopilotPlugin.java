@@ -957,8 +957,9 @@ public class GotrAutopilotPlugin extends Plugin
 
 	private PlannerSettings settingsFor(Snapshot s)
 	{
-		boolean combo = s.isBindingNecklaceWorn() && s.getMagicLevel() >= 82 && s.getBaseRuneCount() > 0
-			&& (s.isLunarSpellbook() || (s.getBaseRune() != null && s.getTalismans().contains(s.getBaseRune())));
+		boolean anyBase = s.getBaseRunes().values().stream().anyMatch(count -> count > 0);
+		boolean combo = s.isBindingNecklaceWorn() && s.getMagicLevel() >= 82 && anyBase
+			&& (s.isLunarSpellbook() || s.getBaseRunes().keySet().stream().anyMatch(s.getTalismans()::contains));
 		return PlannerSettings.builder()
 			.strategy(config.strategy())
 			.openingFragmentTarget(config.openingFragments())
@@ -966,7 +967,6 @@ public class GotrAutopilotPlugin extends Plugin
 			.minFragmentsToCraft(config.minFragmentsToCraft())
 			.desiredGuardians(config.desiredGuardians())
 			.combinationRunes(combo)
-			.baseRune(s.getBaseRune())
 			.balanceWithSavedPoints(config.balanceWithSaved())
 			.maxImbalance(config.maxImbalance())
 			.protectRightBarrier(config.protectRightBarrier())

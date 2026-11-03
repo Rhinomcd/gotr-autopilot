@@ -166,7 +166,7 @@ class GameLog
 			+ ", stones " + s.getElementalStones() + "e/" + s.getCatalyticStones() + "c/"
 			+ s.getPolyElementalStones() + "pe/" + s.getPolyCatalyticStones() + "pc"
 			+ ", uncharged cells " + s.getUnchargedCells()
-			+ ", base rune " + s.getBaseRune() + " x" + s.getBaseRuneCount()
+			+ ", base runes " + s.getBaseRunes()
 			+ ", necklace " + (s.isBindingNecklaceWorn() ? s.getNecklaceCharges() : "off")
 			+ ", imbue " + s.isMagicImbueActive()
 			+ ", chisel " + s.isChisel();
