@@ -269,6 +269,8 @@ public class StateTracker
 	private final Map<Integer, NPC> barrierNpcs = new HashMap<>();
 	// Guardians by NPC index, kept as last seen while out of view.
 	private final Map<Integer, CellTier> guardianTiers = new HashMap<>();
+	// The guardians loaded now, so certainly standing.
+	private final Set<Integer> guardiansInView = new HashSet<>();
 	private final Map<WorldPoint, Integer> barrierHealth = new HashMap<>();
 	// Barriers whose NPC unloaded with the player too far away to see them, as last seen.
 	private final Map<WorldPoint, BarrierState> unseenBarriers = new HashMap<>();
@@ -336,6 +338,7 @@ public class StateTracker
 		resetScene();
 		unseenBarriers.clear();
 		guardianTiers.clear();
+		guardiansInView.clear();
 		readInventory(null);
 		readEquipment(null);
 		pouchStored.clear();
@@ -392,16 +395,23 @@ public class StateTracker
 
 	/**
 	 * The guardians standing, weakest first. Ones that died out of view are still remembered,
-	 * so past the HUD's count the weakest are dropped: they are the likeliest to have fallen.
+	 * so past the HUD's count the unseen are forgotten, strongest first: a guardian the plan
+	 * relies on is never one only presumed alive.
 	 */
 	private List<CellTier> guardianTiersMatching(int count)
 	{
+		while (guardianTiers.size() > count)
+		{
+			Integer drop = guardianTiers.entrySet().stream()
+				.sorted(Comparator.comparing((Map.Entry<Integer, CellTier> e) -> guardiansInView.contains(e.getKey()))
+					.thenComparing(e -> -e.getValue().getRank()))
+				.map(Map.Entry::getKey)
+				.findFirst().orElse(null);
+			guardianTiers.remove(drop);
+			guardiansInView.remove(drop);
+		}
 		List<CellTier> tiers = new ArrayList<>(guardianTiers.values());
 		tiers.sort(Comparator.comparingInt(CellTier::getRank));
-		while (tiers.size() > count)
-		{
-			tiers.remove(0);
-		}
 		return tiers;
 	}
 
@@ -642,6 +652,7 @@ public class StateTracker
 			barrierHealth.clear();
 			unseenBarriers.clear();
 			guardianTiers.clear();
+			guardiansInView.clear();
 			return;
 		}
 		if (msg.contains("The Portal Guardians will keep their rifts open for another 30 seconds"))
@@ -925,6 +936,7 @@ public class StateTracker
 		else if (CellTier.fromGuardianNpc(id) != null)
 		{
 			guardianTiers.put(npc.getIndex(), CellTier.fromGuardianNpc(id));
+			guardiansInView.add(npc.getIndex());
 		}
 		else if (CellTier.fromBarrierNpc(id) != null)
 		{
@@ -966,6 +978,7 @@ public class StateTracker
 			{
 				guardianTiers.remove(npc.getIndex());
 			}
+			guardiansInView.remove(npc.getIndex());
 		}
 		else if (barrierNpcs.remove(npc.getIndex()) != null)
 		{

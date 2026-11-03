@@ -351,6 +351,14 @@ public class Planner
 				return Instruction.builder().step(Step.HOLD_STONES).headline("Hold your stones")
 					.detail(why).items(STONE_ITEMS).urgency(Urgency.INFO).build();
 			}
+			// No altar lets you in with stones: when they cannot safely go in, they go.
+			if (next.getStep() == Step.GO_TO_ALTAR)
+			{
+				return Instruction.builder().step(Step.DESTROY_STONES).headline("Destroy your guardian stones")
+					.detail("Handing them in would raise the power past " + SoloDefence.SAFE_POWER_PERCENT
+						+ "% before your guardians can hold it; the altar will not let you in with them")
+					.items(STONE_ITEMS).urgency(Urgency.HIGH).build();
+			}
 			return next.toBuilder().detail(next.getDetail().isEmpty() ? why : next.getDetail() + " - " + why).build();
 		}
 		// Apply hold-stones as a modifier so it does not block subsequent instructions.
@@ -1144,7 +1152,8 @@ public class Planner
 	 */
 	private Instruction withoutMining(Snapshot s, PlannerSettings c, Instruction next)
 	{
-		if (c.isMineAfterOpening() || next.getStep() != Step.MINE_FRAGMENTS || !pastOpening(s))
+		// Solo skipping portals has only the remains for essence.
+		if (c.isMineAfterOpening() || soloSkipsPortals || next.getStep() != Step.MINE_FRAGMENTS || !pastOpening(s))
 		{
 			return next;
 		}
