@@ -222,11 +222,16 @@ public class Planner
 					.detail("Between the fire and blood portals" + (noChisel.isEmpty() ? "" : " - " + noChisel))
 					.target(Target.CELL_TILE).location(tile).items(cell).build();
 			}
-			if (s.getGuardiansActive() == 0 && s.isChisel() && !closing)
+			if (s.getGuardiansActive() == 0 && s.isChisel())
 			{
-				return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN).headline("Make a weak catalytic guardian")
-					.detail("Use the cell on the catalytic essence pile")
-					.target(Target.ESSENCE_PILE_CATALYTIC).items(cell).build();
+				// The next countdown follows the close straight away: wait at the pile, not the remains.
+				return closing
+					? Instruction.builder().step(Step.PRE_POSITION).headline("Wait by the catalytic essence pile")
+						.detail("Make the weak guardian when the next countdown starts")
+						.target(Target.ESSENCE_PILE_CATALYTIC).items(cell).urgency(Urgency.INFO).build()
+					: Instruction.builder().step(Step.PRE_BUILD_GUARDIAN).headline("Make a weak catalytic guardian")
+						.detail("Use the cell on the catalytic essence pile")
+						.target(Target.ESSENCE_PILE_CATALYTIC).items(cell).build();
 			}
 			WorldPoint right = weakRightTile(s, c, s.getChargedCell());
 			if (right != null)
