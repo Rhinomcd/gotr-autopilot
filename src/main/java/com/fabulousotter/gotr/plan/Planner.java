@@ -153,6 +153,16 @@ public class Planner
 			// Through the grace portal: fill up for the next round, then wait where you are.
 			return inHugeRemains(s, true);
 		}
+		// A cell left from the last round is lost before the next starts: on the empty centre
+		// tile it becomes the next round's barrier, saving a trip to the weak cell table.
+		boolean closing = s.getPhase() == GamePhase.CLOSING || s.getPhase() == GamePhase.ENDED;
+		WorldPoint centre = c.getStrategy() == Strategy.SOLO ? soloTile(s) : null;
+		if (closing && centre != null && s.getChargedCell() != null && s.getChargedCell() != CellTier.WEAK)
+		{
+			return Instruction.builder().step(Step.PRE_BUILD_BARRIER).headline("Put your leftover cell on the centre tile")
+				.detail("It is lost otherwise, and the next round starts with its barrier up")
+				.target(Target.CELL_TILE).location(centre).items(ImmutableSet.of(s.getChargedCell().getCellItemId())).build();
+		}
 		if (s.isPortalOpen())
 		{
 			// A portal between rounds: only what fits before it closes, then wait inside.
