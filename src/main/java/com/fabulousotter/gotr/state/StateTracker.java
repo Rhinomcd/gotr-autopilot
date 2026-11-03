@@ -395,8 +395,8 @@ public class StateTracker
 
 	/**
 	 * The guardians standing, weakest first. Ones that died out of view are still remembered,
-	 * so past the HUD's count the unseen are forgotten, strongest first: a guardian the plan
-	 * relies on is never one only presumed alive.
+	 * so past the HUD's count the unseen are forgotten, weakest first: weak guardians die long
+	 * before overcharged ones, as live games showed when "dead" overcharged ones walked back.
 	 */
 	private List<CellTier> guardianTiersMatching(int count)
 	{
@@ -405,7 +405,7 @@ public class StateTracker
 		{
 			Integer unseen = guardianTiers.entrySet().stream()
 				.filter(e -> !guardiansInView.contains(e.getKey()))
-				.max(Comparator.comparingInt(e -> e.getValue().getRank()))
+				.min(Comparator.comparingInt(e -> e.getValue().getRank()))
 				.map(Map.Entry::getKey).orElse(null);
 			if (unseen == null)
 			{
