@@ -69,6 +69,8 @@ public class Planner
 	private static final int NEEDS_CELL_PERCENT = 90;
 	// Each guardian stone handed in raises the Great Guardian's power by about this much (wiki solo guide).
 	private static final double STONE_POWER_PERCENT = 0.38;
+	// The 60% explosion: from here the solo guide pushes straight for 100%.
+	private static final int CLOSE_OUT_PERCENT = 60;
 	private int fragmentReserve;
 	// Solo without a setup that holds the rift: the portal is not worth the absence.
 	private boolean soloSkipsPortals;
@@ -1558,7 +1560,8 @@ public class Planner
 	 */
 	private static boolean soloPowerCapped(Snapshot s, PlannerSettings c)
 	{
-		if (c.getStrategy() != Strategy.SOLO || soloDefence(s, c).holdsHighPower())
+		// Past the 60% explosion the guide closes the game out: holding back only drags it on.
+		if (c.getStrategy() != Strategy.SOLO || soloDefence(s, c).holdsHighPower() || s.powerPercent() >= CLOSE_OUT_PERCENT)
 		{
 			return false;
 		}
