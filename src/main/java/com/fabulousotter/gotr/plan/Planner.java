@@ -272,6 +272,15 @@ public class Planner
 			return inHugeRemains(s, false);
 		}
 
+		// A barrier about to break costs more than a portal trip gains.
+		if (s.getChargedCell() != null && anyBarrierCritical(s))
+		{
+			Instruction cell = cellPlan(s, c);
+			if (cell != null)
+			{
+				return cell;
+			}
+		}
 		// Run grace-portal preparation before the portal instruction while there is time. The
 		// portal comes before a broken tile: it is open for 26 s, the tile keeps.
 		if (s.isPortalOpen())
@@ -1361,6 +1370,14 @@ public class Planner
 		boolean needGuardian = s.getGuardiansActive() < c.getDesiredGuardians();
 		boolean strongEnough = tier.isAtLeast(CellTier.STRONG) || s.getGuardiansActive() == 0;
 		boolean wantGuardian = slotFree && needGuardian && strongEnough;
+		// Solo has one barrier between the creatures and the Great Guardian: it comes back first.
+		WorldPoint soloRebuild = c.getStrategy() == Strategy.SOLO ? soloTile(s) : null;
+		if (soloRebuild != null)
+		{
+			return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Rebuild the centre barrier")
+				.detail("Before any guardian: nothing else stops the creatures")
+				.target(Target.CELL_TILE).location(soloRebuild).items(cell).build();
+		}
 		if (wantGuardian && s.isChisel())
 		{
 			Alignment alignment = shortAlignment(s, c);

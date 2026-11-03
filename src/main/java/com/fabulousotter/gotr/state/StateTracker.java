@@ -262,6 +262,10 @@ public class StateTracker
 	@Getter
 	private final Map<Integer, NPC> barrierNpcs = new HashMap<>();
 	private final Map<WorldPoint, Integer> barrierHealth = new HashMap<>();
+	// Barriers whose NPC unloaded with the player too far away to see them, as last seen.
+	private final Map<WorldPoint, BarrierState> unseenBarriers = new HashMap<>();
+	// The client keeps NPCs within about 15 tiles of the player.
+	private static final int NPC_VIEW_TILES = 14;
 
 	// Inventory and equipment.
 	private Item[] inventoryItems;
@@ -320,6 +324,7 @@ public class StateTracker
 	public void reset()
 	{
 		resetScene();
+		unseenBarriers.clear();
 		readInventory(null);
 		readEquipment(null);
 		pouchStored.clear();
@@ -367,9 +372,21 @@ public class StateTracker
 		greatGuardianSize = 0;
 		rewardTrader = null;
 		cordelia = null;
+		// Leaving the temple unloads the barriers, not destroys them.
+		barrierNpcs.values().forEach(this::rememberBarrier);
 		cellTiles.clear();
 		barrierNpcs.clear();
 		barrierHealth.clear();
+	}
+
+	private void rememberBarrier(NPC npc)
+	{
+		CellTier tier = CellTier.fromBarrierNpc(npc.getId());
+		WorldPoint tile = cellTileNear(npc.getWorldLocation());
+		if (tier != null)
+		{
+			unseenBarriers.put(tile, new BarrierState(tile, tier, barrierHealth.getOrDefault(npc.getWorldLocation(), -1)));
+		}
 	}
 
 	public void primeFromClient()
@@ -597,6 +614,7 @@ public class StateTracker
 			portalOpen = false;
 			portalClosesTick = -1;
 			barrierHealth.clear();
+			unseenBarriers.clear();
 			return;
 		}
 		if (msg.contains("The Portal Guardians will keep their rifts open for another 30 seconds"))
@@ -881,6 +899,7 @@ public class StateTracker
 		{
 			barrierNpcs.put(npc.getIndex(), npc);
 			barrierHealth.remove(npc.getWorldLocation());
+			unseenBarriers.remove(cellTileNear(npc.getWorldLocation()));
 		}
 	}
 
@@ -902,6 +921,12 @@ public class StateTracker
 		}
 		else if (barrierNpcs.remove(npc.getIndex()) != null)
 		{
+			Player me = client.getLocalPlayer();
+			boolean outOfView = me != null && me.getWorldLocation().distanceTo2D(npc.getWorldLocation()) > NPC_VIEW_TILES;
+			if (outOfView)
+			{
+				rememberBarrier(npc);
+			}
 			barrierHealth.remove(npc.getWorldLocation());
 		}
 	}
@@ -1378,6 +1403,16 @@ public class StateTracker
 			WorldPoint at = npc.getWorldLocation();
 			barriers.add(new BarrierState(cellTileNear(at), tier, barrierHealth.getOrDefault(at, -1)));
 		}
+		for (BarrierState unseen : unseenBarriers.values())
+		{
+			GroundObject tile = cellTileAt(unseen.getLocation());
+			// A loaded tile that shows empty or broken has lost its barrier.
+			boolean gone = tile != null && (EMPTY_TILES.contains(tile.getId()) || BROKEN_TILES.contains(tile.getId()));
+			if (!gone)
+			{
+				barriers.add(unseen);
+			}
+		}
 		List<WorldPoint> emptyTiles = new ArrayList<>();
 		List<WorldPoint> brokenTiles = new ArrayList<>();
 		for (GroundObject tile : cellTiles.values())
@@ -1626,6 +1661,12 @@ public class StateTracker
 				return end >= 0 ? Math.max(0, breakSeconds() - ticksToSeconds(tick - end)) : -1;
 			}
 		}
+	}
+
+	@Nullable
+	private GroundObject cellTileAt(WorldPoint at)
+	{
+		return cellTiles.get(at);
 	}
 
 	@Nullable
