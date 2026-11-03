@@ -31,6 +31,7 @@ import com.fabulousotter.gotr.model.CellTier;
 import com.fabulousotter.gotr.model.CombinationRune;
 import com.fabulousotter.gotr.model.PouchType;
 import com.google.common.collect.ImmutableSet;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -188,6 +189,9 @@ public class StateTracker
 	private int hudElemental;
 	private int hudCatalytic;
 	private int hudPower;
+	// HUD power a few ticks back: it only falls while the Great Guardian takes damage.
+	private final ArrayDeque<Integer> recentPower = new ArrayDeque<>();
+	private static final int POWER_TREND_TICKS = 5;
 	private int hudMaxPower;
 	private int hudPortalLocation;
 	private int hudElementalIndex;
@@ -1105,6 +1109,18 @@ public class StateTracker
 	public void tick()
 	{
 		int tick = client.getTickCount();
+		if (phase == GamePhase.ACTIVE)
+		{
+			recentPower.addLast(hudPower);
+			if (recentPower.size() > POWER_TREND_TICKS)
+			{
+				recentPower.removeFirst();
+			}
+		}
+		else
+		{
+			recentPower.clear();
+		}
 		if (scanPending && client.getLocalPlayer() != null)
 		{
 			scanPending = false;
@@ -1488,6 +1504,7 @@ public class StateTracker
 			.elementalEnergy(elemental)
 			.catalyticEnergy(catalytic)
 			.power(hudPower)
+			.powerFalling(recentPower.size() == POWER_TREND_TICKS && hudPower < recentPower.peekFirst())
 			.maxPower(hudMaxPower)
 			.activeElemental(useObserved ? observedElemental : Altar.fromHud(Alignment.ELEMENTAL, hudElementalIndex))
 			.activeCatalytic(useObserved ? observedCatalytic : Altar.fromHud(Alignment.CATALYTIC, hudCatalyticIndex))

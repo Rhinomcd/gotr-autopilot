@@ -1000,6 +1000,11 @@ public class Planner
 			return Instruction.builder().step(Step.LEAVE_HUGE_REMAINS).headline("Leave and hand in your stones")
 				.detail("The rifts are still open").target(Target.PORTAL).items(STONE_ITEMS).urgency(Urgency.HIGH).build();
 		}
+		if (!betweenRounds && s.isPowerFalling())
+		{
+			return Instruction.builder().step(Step.LEAVE_HUGE_REMAINS).headline("Leave now: the Great Guardian is under attack")
+				.detail("Its power is falling - check the barrier").target(Target.PORTAL).urgency(Urgency.HIGH).build();
+		}
 		boolean stay = betweenRounds || graceTime(s);
 		Instruction done = stay
 			? Instruction.builder().step(Step.WAIT_FOR_PORTAL).headline("Wait inside for the next game")

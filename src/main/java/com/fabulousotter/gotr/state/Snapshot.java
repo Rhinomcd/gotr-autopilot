@@ -67,6 +67,7 @@ public class Snapshot
 	int elementalEnergy;
 	int catalyticEnergy;
 	int power;
+	boolean powerFalling;
 	int maxPower;
 	@Nullable
 	Altar activeElemental;
