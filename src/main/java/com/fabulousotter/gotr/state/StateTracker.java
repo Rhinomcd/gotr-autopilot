@@ -400,15 +400,18 @@ public class StateTracker
 	 */
 	private List<CellTier> guardianTiersMatching(int count)
 	{
-		while (guardianTiers.size() > count)
+		// Until the HUD has reported, its count of zero says nothing.
+		while (hudTick >= 0 && guardianTiers.size() > count)
 		{
-			Integer drop = guardianTiers.entrySet().stream()
-				.sorted(Comparator.comparing((Map.Entry<Integer, CellTier> e) -> guardiansInView.contains(e.getKey()))
-					.thenComparing(e -> -e.getValue().getRank()))
-				.map(Map.Entry::getKey)
-				.findFirst().orElse(null);
-			guardianTiers.remove(drop);
-			guardiansInView.remove(drop);
+			Integer unseen = guardianTiers.entrySet().stream()
+				.filter(e -> !guardiansInView.contains(e.getKey()))
+				.max(Comparator.comparingInt(e -> e.getValue().getRank()))
+				.map(Map.Entry::getKey).orElse(null);
+			if (unseen == null)
+			{
+				break;
+			}
+			guardianTiers.remove(unseen);
 		}
 		List<CellTier> tiers = new ArrayList<>(guardianTiers.values());
 		tiers.sort(Comparator.comparingInt(CellTier::getRank));
