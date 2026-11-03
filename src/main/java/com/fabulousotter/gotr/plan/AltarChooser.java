@@ -68,6 +68,10 @@ class AltarChooser
 				continue;
 			}
 			boolean viaTalisman = altar != s.getActiveElemental() && altar != s.getActiveCatalytic();
+			if (!viaTalisman && !reachableInTime(altar, s))
+			{
+				continue;
+			}
 			CombinationRune combo = combinationAt(altar, s, c);
 			int perEssence = combo != null ? 3 : 2;
 			AltarChoice choice = new AltarChoice(altar, combo, viaTalisman, perEssence, "");
@@ -87,6 +91,17 @@ class AltarChooser
 		}
 		return new AltarChoice(best.getAltar(), best.getCombination(), best.isViaTalisman(), best.getEnergyPerEssence(),
 			reason(best, essence));
+	}
+
+	/**
+	 * Whether the player reaches the altar's portal guardian before the altars change. Unknown
+	 * distances and an unknown clock count as reachable.
+	 */
+	static boolean reachableInTime(Altar altar, Snapshot s)
+	{
+		Integer tiles = s.getGuardianTravelTicks().get(altar);
+		int rot = s.getAltarSecondsRemaining();
+		return tiles == null || rot < 0 || tiles / 2.0 * 0.6 + 1 <= rot;
 	}
 
 	// Why an open altar cannot be used by this player, or null when it can.

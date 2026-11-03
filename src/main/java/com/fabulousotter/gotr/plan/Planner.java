@@ -978,13 +978,27 @@ public class Planner
 		return done;
 	}
 
+	// An open altar this player could use, but not reach before the altars change.
+	private static boolean tooFarForOpenAltar(Snapshot s)
+	{
+		for (Altar altar : new Altar[]{s.getActiveElemental(), s.getActiveCatalytic()})
+		{
+			if (altar != null && AltarChooser.unusableReason(altar, s) == null && !AltarChooser.reachableInTime(altar, s))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private Instruction altarTrip(Snapshot s, PlannerSettings c, int essence)
 	{
 		AltarChoice choice = AltarChooser.choose(s, c);
 		if (choice == null)
 		{
 			String why = s.getActiveElemental() == null && s.getActiveCatalytic() == null
-				? "No altar is open yet" : "You cannot use either open altar";
+				? "No altar is open yet"
+				: tooFarForOpenAltar(s) ? "Altars change in ~" + s.getAltarSecondsRemaining() + "s" : "You cannot use either open altar";
 			return Instruction.builder().step(Step.WAIT_FOR_ALTAR).headline(why)
 				.detail("Wait in the centre")
 				.target(Target.CENTRE_WAIT).urgency(Urgency.INFO).build();
