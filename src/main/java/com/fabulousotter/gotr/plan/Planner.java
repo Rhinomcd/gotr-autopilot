@@ -97,7 +97,7 @@ public class Planner
 		fragmentReserve = c.getStrategy() == Strategy.SOLO ? 2 * TILE_REPAIR_FRAGMENTS : 0;
 		soloSkipsPortals = c.getStrategy() == Strategy.SOLO && s.getPhase() == GamePhase.ACTIVE
 			&& (soloTile(s) != null || !s.getBrokenTiles().isEmpty() || soloCentreCritical(s, c)
-				|| !soloDefence(s, c).holdsTheRift() && !weakAltarSet(s));
+				|| !soloDefence(s, c).holdsTheRift() && !(weakAltarSet(s) && s.getGuardiansActive() > 0));
 		if (!c.isDepositRunes() && s.getDepositableRunes() > 0)
 		{
 			// The runes stay where they are and simply take their inventory slots.
@@ -313,6 +313,15 @@ public class Planner
 			String room = s.getFreeSlots() == 0 ? "Drop one essence to make room - " : "";
 			return Instruction.builder().step(Step.PRE_TAKE_WEAK_CELL).headline("Collect a weak cell for the centre barrier")
 				.detail(room + "nothing stops the creatures until it is back").target(Target.WEAK_CELL_TABLE).urgency(Urgency.HIGH).build();
+		}
+		// Solo with no guardian standing: the creatures mass on the barrier until one does, so a
+		// free weak cell from the table becomes one at once.
+		if (c.getStrategy() == Strategy.SOLO && !soloBarrierDown && s.getBrokenTiles().isEmpty() && s.getChargedCell() == null
+			&& s.getGuardiansActive() == 0 && s.isChisel() && !s.hasStones())
+		{
+			String room = s.getFreeSlots() == 0 ? "Drop one essence to make room - " : "";
+			return Instruction.builder().step(Step.PRE_TAKE_WEAK_CELL).headline("Collect a weak cell for a guardian")
+				.detail(room + "with none standing the creatures mass on the barrier").target(Target.WEAK_CELL_TABLE).urgency(Urgency.HIGH).build();
 		}
 		// Solo's broken tile is its only barrier gone: it is mended before any portal.
 		if (c.getStrategy() == Strategy.SOLO && !s.getBrokenTiles().isEmpty() && s.getFragments() >= TILE_REPAIR_FRAGMENTS)
