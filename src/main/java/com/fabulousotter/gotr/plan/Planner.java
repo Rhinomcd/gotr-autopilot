@@ -1484,6 +1484,12 @@ public class Planner
 		CellTier tier = s.getChargedCell();
 		Set<Integer> cell = ImmutableSet.of(tier.getCellItemId());
 		boolean slotFree = s.isChisel() && s.getGuardiansActive() < s.getGuardiansMax();
+		WorldPoint centreTile = soloCentre(s);
+		// The centre tile broken: a weak cell waits for the repair; a better one can still guard.
+		if (centreTile != null && s.getBrokenTiles().contains(centreTile))
+		{
+			return slotFree && tier.isAtLeast(CellTier.STRONG) ? soloGuardian(tier, cell) : null;
+		}
 		WorldPoint rebuild = soloTile(s);
 		if (rebuild != null)
 		{
