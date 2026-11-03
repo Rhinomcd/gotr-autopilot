@@ -1435,9 +1435,9 @@ public class Planner
 
 	/**
 	 * Solo, after the wiki's solo guide: the centre barrier takes every creature, so it is never
-	 * left down; an overcharged guardian, then strong ones, are what let the power climb; the
-	 * guardians are catalytic. Upgrading a barrier resets it to half health, so a better cell
-	 * goes on as an upgrade, a matching one as a recharge.
+	 * left down; overcharged and strong guardians are what let the power climb; the guardians
+	 * are catalytic. A better cell raises a barrier only one tier and resets it to half health,
+	 * so the strong cells go to guardians while a slot is free.
 	 */
 	private Instruction soloCellPlan(Snapshot s, PlannerSettings c)
 	{
@@ -1460,13 +1460,13 @@ public class Planner
 			switch (tier)
 			{
 				case OVERCHARGED:
-					if (slotFree && defence.getOverchargedGuardians() == 0)
+					if (slotFree)
 					{
 						return soloGuardian(tier, cell);
 					}
 					break;
 				case STRONG:
-					if (slotFree && (defence.getStrongGuardians() == 0 || !centreBelow))
+					if (slotFree && (defence.getStrongGuardians() == 0 || centre == null || centre.getTier().isAtLeast(CellTier.MEDIUM)))
 					{
 						return soloGuardian(tier, cell);
 					}
