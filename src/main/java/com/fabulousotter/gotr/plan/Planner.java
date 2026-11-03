@@ -67,6 +67,8 @@ public class Planner
 	private static final int SPARE_CELL_TILES = 10;
 	/** A barrier at or above this is as good as full: a cell on it is a spare, placed on the nearest. */
 	private static final int NEEDS_CELL_PERCENT = 90;
+	private int fragmentReserve;
+
 	// Casting NPC Contact and choosing the Dark Mage's repair.
 	private static final int NPC_CONTACT_SECONDS = 5;
 	/** Smallest load worth an altar trip squeezed in before the last portal of the round. */
@@ -83,6 +85,7 @@ public class Planner
 
 	public Instruction plan(Snapshot s, PlannerSettings c)
 	{
+		fragmentReserve = c.getStrategy() == Strategy.SOLO ? TILE_REPAIR_FRAGMENTS : 0;
 		if (!c.isDepositRunes() && s.getDepositableRunes() > 0)
 		{
 			// The runes stay where they are and simply take their inventory slots.
@@ -490,7 +493,7 @@ public class Planner
 
 		int essence = s.essenceTotal();
 		boolean full = s.capacity() == 0;
-		boolean nothingToCraft = s.getFragments() == 0;
+		boolean nothingToCraft = craftable(s) == 0;
 		if (essence >= MIN_TRIP_ESSENCE && !craftingUnderway(s)
 			&& ((nothingToCraft && s.capacity() < MIN_MINING_LEG) || !topUpWorthIt(s, essence)))
 		{
@@ -504,11 +507,11 @@ public class Planner
 				return trip;
 			}
 			// Continue mining/crafting while all altars are unavailable.
-			if (s.getFragments() > 0 && s.capacity() == 0)
+			if (craftable(s) > 0 && s.capacity() == 0)
 			{
 				return mineWhileWaitingForAltar(s, c);
 			}
-			if (s.getFragments() == 0 && s.capacity() < MIN_MINING_LEG)
+			if (craftable(s) == 0 && s.capacity() < MIN_MINING_LEG)
 			{
 				// Preserve the specific weak-altar wait instruction.
 				if (AltarChooser.choose(s, c) != null)
@@ -519,7 +522,7 @@ public class Planner
 			}
 		}
 
-		if (s.getFragments() > 0 && s.capacity() > 0 && (essence == 0 || topUpWorthIt(s, essence) || craftingUnderway(s)))
+		if (craftable(s) > 0 && s.capacity() > 0 && (essence == 0 || topUpWorthIt(s, essence) || craftingUnderway(s)))
 		{
 			if (craftingUnderway(s))
 			{
@@ -536,7 +539,7 @@ public class Planner
 			}
 			return craftEssence(s);
 		}
-		if (s.getFragments() > 0 && s.capacity() == 0)
+		if (craftable(s) > 0 && s.capacity() == 0)
 		{
 			boolean deposit = s.getDepositableRunes() > 0;
 			return Instruction.builder().step(Step.FREE_SPACE).headline("Make room for essence")
@@ -557,7 +560,7 @@ public class Planner
 	{
 		int essence = s.essenceTotal();
 		int room = s.capacity();
-		int fragments = s.getFragments();
+		int fragments = craftable(s);
 		int close = s.getSecondsToClose();
 
 		if (s.getUnchargedCells() == 0 && s.getChargedCell() == null && essence == 0
@@ -1119,7 +1122,7 @@ public class Planner
 		{
 			return next;
 		}
-		if (s.getFragments() > 0 && s.capacity() > 0)
+		if (craftable(s) > 0 && s.capacity() > 0)
 		{
 			return craftEssence(s);
 		}
@@ -1173,7 +1176,7 @@ public class Planner
 			return null;
 		}
 		int room = s.capacity();
-		int fragments = s.getFragments();
+		int fragments = craftable(s);
 		int remaining = room - fragments;
 		if (remaining <= 0 || !miningLegWorthIt(s, remaining))
 		{
@@ -1219,7 +1222,7 @@ public class Planner
 
 	private static boolean topUpWorthIt(Snapshot s, int essence)
 	{
-		int craftable = Math.min(s.getFragments(), s.capacity());
+		int craftable = Math.min(craftable(s), s.capacity());
 		return craftable > 0 && (craftable >= MIN_TOPUP || essence < MIN_TRIP_ESSENCE);
 	}
 
@@ -1260,7 +1263,7 @@ public class Planner
 			return Instruction.builder().step(Step.PRE_TAKE_CELLS).headline("Collect uncharged cells")
 				.detail(when).target(Target.UNCHARGED_CELL_TABLE).build();
 		}
-		if (s.getFreeSlots() == 0 && s.getFragments() == 0 && s.getEssence() > 0 && (rot < 0 || rot > DROP_ESSENCE_WAIT_SECONDS))
+		if (s.getFreeSlots() == 0 && craftable(s) == 0 && s.getEssence() > 0 && (rot < 0 || rot > DROP_ESSENCE_WAIT_SECONDS))
 		{
 			return Instruction.builder().step(Step.DROP_ESSENCE).headline("Drop one essence")
 				.detail(when).items(ESSENCE_ITEM).build();
@@ -1316,6 +1319,12 @@ public class Planner
 			.target(remains).build();
 	}
 
+	// Fragments free to craft: solo keeps one tile repair in hand, as its only barrier can break.
+	private int craftable(Snapshot s)
+	{
+		return Math.max(0, s.getFragments() - fragmentReserve);
+	}
+
 	private Instruction craftEssence(Snapshot s)
 	{
 		if (s.getFreeSlots() == 0 && s.pouchSpace() > 0)
@@ -1323,7 +1332,7 @@ public class Planner
 			return Instruction.builder().step(Step.FILL_POUCHES).headline("Fill your pouches")
 				.detail("").target(Target.WORKBENCH).items(pouchesWithSpace(s)).build();
 		}
-		int craftable = Math.min(s.getFragments(), s.capacity());
+		int craftable = Math.min(craftable(s), s.capacity());
 		if (s.getDepositableRunes() > 0 && s.getFreeSlots() < craftable)
 		{
 			return depositRunes(s);
