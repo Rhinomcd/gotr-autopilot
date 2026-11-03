@@ -56,6 +56,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -69,6 +72,9 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.MenuAction;
+import net.runelite.client.util.Text;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.gameval.ObjectID;
@@ -177,6 +183,13 @@ public class GotrAutopilotPlugin extends Plugin
 
 	private final Planner planner = new Planner();
 	private final GameLog gameLog = new GameLog();
+	// One thread keeps the lines in order and the file IO off the client thread.
+	private final ExecutorService gameLogWriter = Executors.newSingleThreadExecutor(r ->
+	{
+		Thread thread = new Thread(r, "gotr-game-log");
+		thread.setDaemon(true);
+		return thread;
+	});
 	private static final Path GAME_LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("gotr-autopilot");
 
 	@Getter
@@ -280,10 +293,36 @@ public class GotrAutopilotPlugin extends Plugin
 	public void onChatMessage(ChatMessage event)
 	{
 		boolean game = event.getType() == ChatMessageType.GAMEMESSAGE || event.getType() == ChatMessageType.SPAM;
-		if (game && snapshot.getLocation() != Location.OUTSIDE)
+		if (config.gameLog() && game && snapshot.getLocation() != Location.OUTSIDE)
 		{
 			writeGameLog(snapshot, Collections.singletonList("chat: " + event.getMessage()));
 		}
+	}
+
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		if (config.gameLog() && snapshot.getLocation() != Location.OUTSIDE && event.getMenuAction() != MenuAction.WALK)
+		{
+			writeGameLog(snapshot, Collections.singletonList("click: " + event.getMenuOption() + " " + Text.removeTags(event.getMenuTarget())));
+		}
+	}
+
+	// Abyssal creatures in view by name, with how many are attacking something.
+	private String enemies()
+	{
+		Map<String, Integer> counts = new TreeMap<>();
+		int attacking = 0;
+		for (NPC npc : client.getTopLevelWorldView().npcs())
+		{
+			String name = npc.getName();
+			if (name != null && name.startsWith("Abyssal"))
+			{
+				counts.merge(name, 1, Integer::sum);
+				attacking += npc.getInteracting() != null ? 1 : 0;
+			}
+		}
+		return counts + ", " + attacking + " attacking";
 	}
 
 	private int greatGuardianHealth()
@@ -298,7 +337,7 @@ public class GotrAutopilotPlugin extends Plugin
 
 	private void writeGameLog(Snapshot s, List<String> lines)
 	{
-		if (!config.gameLog() || lines.isEmpty())
+		if (lines.isEmpty())
 		{
 			return;
 		}
@@ -308,16 +347,20 @@ public class GotrAutopilotPlugin extends Plugin
 		{
 			sb.append(prefix).append(line).append('\n');
 		}
-		try
+		Path file = GAME_LOG_DIR.resolve(LocalDate.now() + ".log");
+		byte[] bytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+		gameLogWriter.execute(() ->
 		{
-			Files.createDirectories(GAME_LOG_DIR);
-			Files.write(GAME_LOG_DIR.resolve(LocalDate.now() + ".log"), sb.toString().getBytes(StandardCharsets.UTF_8),
-				StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-		}
-		catch (IOException e)
-		{
-			log.warn("Could not write the game log", e);
-		}
+			try
+			{
+				Files.createDirectories(GAME_LOG_DIR);
+				Files.write(file, bytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			}
+			catch (IOException e)
+			{
+				log.warn("Could not write the game log", e);
+			}
+		});
 	}
 
 	@Subscribe
@@ -362,7 +405,10 @@ public class GotrAutopilotPlugin extends Plugin
 		lastTile = next.getTarget() == Target.CELL_TILE || next.getTarget() == Target.BARRIER ? next.getLocation() : null;
 		snapshot = s;
 		instruction = next;
-		writeGameLog(s, gameLog.changes(s, next, greatGuardianHealth()));
+		if (config.gameLog())
+		{
+			writeGameLog(s, gameLog.changes(s, next, greatGuardianHealth(), s.getLocation() == Location.TEMPLE ? enemies() : null));
+		}
 
 		boolean altarSwitched = next.getStep() == Step.GO_TO_ALTAR && lastStep == Step.GO_TO_ALTAR
 			&& next.getAltar() != null && next.getAltar() != lastAltar;

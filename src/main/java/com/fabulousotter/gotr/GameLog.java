@@ -26,13 +26,18 @@ package com.fabulousotter.gotr;
 
 import com.fabulousotter.gotr.plan.Instruction;
 import com.fabulousotter.gotr.state.BarrierState;
+import com.fabulousotter.gotr.state.GamePhase;
+import com.fabulousotter.gotr.state.Location;
 import com.fabulousotter.gotr.state.Snapshot;
+import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringJoiner;
+import javax.annotation.Nullable;
+import net.runelite.api.coords.WorldPoint;
 
 /**
  * Turns each tick's snapshot and instruction into log lines for what changed since the last
@@ -40,12 +45,32 @@ import java.util.StringJoiner;
  */
 class GameLog
 {
-	private Map<String, String> last = new LinkedHashMap<>();
+	private static final String UNSEEN = "unseen";
 
-	List<String> changes(Snapshot s, Instruction i, int greatGuardianHealth)
+	private Map<String, String> last = new LinkedHashMap<>();
+	private GamePhase lastPhase;
+
+	/**
+	 * @param greatGuardianHealth percent, or -1 while its health bar is not showing
+	 * @param enemies abyssal creatures in view, or null away from the temple
+	 */
+	List<String> changes(Snapshot s, Instruction i, int greatGuardianHealth, @Nullable String enemies)
 	{
-		Map<String, String> now = watched(s, i, greatGuardianHealth);
+		Map<String, String> now = watched(s, i, greatGuardianHealth, enemies);
+		if (s.getLocation() != Location.TEMPLE)
+		{
+			// The temple's NPCs and tiles unload away from it: what was last seen still stands.
+			for (String key : TEMPLE_ONLY)
+			{
+				now.put(key, last.getOrDefault(key, UNSEEN));
+			}
+		}
 		List<String> lines = new ArrayList<>();
+		if (lastPhase == GamePhase.ACTIVE && s.getPhase() == GamePhase.CLOSING)
+		{
+			lines.add("outcome: " + (s.getMaxPower() > 0 && s.getPower() >= s.getMaxPower() ? "WON" : "LOST at " + s.powerPercent() + "% power"));
+		}
+		lastPhase = s.getPhase();
 		now.forEach((key, value) ->
 		{
 			if (!Objects.equals(last.get(key), value))
@@ -56,6 +81,7 @@ class GameLog
 		if (!Objects.equals(last.get("step"), now.get("step")))
 		{
 			lines.add("  carrying: " + carrying(s));
+			lines.add("  timers: " + timers(s));
 		}
 		last = now;
 		return lines;
@@ -64,18 +90,23 @@ class GameLog
 	void reset()
 	{
 		last = new LinkedHashMap<>();
+		lastPhase = null;
 	}
 
-	private static Map<String, String> watched(Snapshot s, Instruction i, int greatGuardianHealth)
+	private static final List<String> TEMPLE_ONLY = ImmutableList.of("great guardian health", "barriers", "broken tiles", "empty tiles", "enemies");
+
+	private static Map<String, String> watched(Snapshot s, Instruction i, int greatGuardianHealth, @Nullable String enemies)
 	{
 		Map<String, String> m = new LinkedHashMap<>();
 		m.put("phase", s.getPhase() + " " + s.getLocation());
 		m.put("step", i.getStep() + " \"" + i.getHeadline() + "\"" + (i.getDetail().isEmpty() ? "" : " (" + i.getDetail() + ")"));
-		m.put("power", bucket(s.powerPercent(), 5) + "%");
-		m.put("great guardian health", greatGuardianHealth < 0 ? "unseen" : bucket(greatGuardianHealth, 10) + "%");
+		m.put("power", s.powerPercent() + "%");
+		m.put("great guardian health", greatGuardianHealth < 0 ? UNSEEN : greatGuardianHealth + "%");
 		m.put("guardians", s.getGuardiansActive() + "/" + s.getGuardiansMax());
 		m.put("barriers", barriers(s));
-		m.put("broken tiles", String.valueOf(s.getBrokenTiles().size()));
+		m.put("broken tiles", tiles(s.getBrokenTiles()));
+		m.put("empty tiles", tiles(s.getEmptyTiles()));
+		m.put("enemies", Objects.toString(enemies, UNSEEN));
 		m.put("altars", s.getActiveElemental() + " / " + s.getActiveCatalytic());
 		m.put("portal", s.isPortalOpen() ? "open " + Objects.toString(s.getPortalDirection(), "") : "closed");
 		m.put("cell", String.valueOf(s.getChargedCell()));
@@ -89,10 +120,29 @@ class GameLog
 		StringJoiner j = new StringJoiner(", ", "[", "]");
 		for (BarrierState b : s.getBarriers())
 		{
-			String health = b.getHealthPercent() < 0 ? "?" : bucket(b.getHealthPercent(), 10) + "%";
-			j.add(b.getTier() + " " + health + " @" + b.getLocation().getX() + "," + b.getLocation().getY());
+			String health = b.getHealthPercent() < 0 ? "?" : b.getHealthPercent() + "%";
+			j.add(b.getTier() + " " + health + " @" + at(b.getLocation()));
 		}
 		return j.toString();
+	}
+
+	private static String tiles(List<WorldPoint> tiles)
+	{
+		StringJoiner j = new StringJoiner(", ", "[", "]");
+		tiles.forEach(tile -> j.add(at(tile)));
+		return j.toString();
+	}
+
+	private static String at(WorldPoint p)
+	{
+		return p.getX() + "," + p.getY();
+	}
+
+	private static String timers(Snapshot s)
+	{
+		return "altars change in " + s.getAltarSecondsRemaining() + "s"
+			+ ", portal " + (s.isPortalOpen() ? "closes in " + s.getPortalSecondsRemaining() + "s" : "opens in " + s.getSecondsToNextPortal() + "s")
+			+ ", rift closes in " + s.getSecondsToClose() + "s";
 	}
 
 	private static String carrying(Snapshot s)

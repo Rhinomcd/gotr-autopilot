@@ -28,6 +28,7 @@ import com.fabulousotter.gotr.model.CellTier;
 import com.fabulousotter.gotr.plan.Instruction;
 import com.fabulousotter.gotr.plan.Step;
 import com.fabulousotter.gotr.state.BarrierState;
+import com.fabulousotter.gotr.state.Location;
 import com.fabulousotter.gotr.state.Snapshot;
 import com.google.common.collect.ImmutableList;
 import java.util.Collections;
@@ -43,6 +44,7 @@ public class GameLogTest
 	private static Snapshot withBarrier(int health)
 	{
 		return Snapshot.builder()
+			.location(Location.TEMPLE)
 			.barriers(ImmutableList.of(new BarrierState(new WorldPoint(3610, 9497, 0), CellTier.STRONG, health)))
 			.build();
 	}
@@ -51,8 +53,17 @@ public class GameLogTest
 	public void logsOnlyWhatChanged()
 	{
 		GameLog log = new GameLog();
-		assertTrue(log.changes(withBarrier(90), MINE, -1).size() > 1);
-		assertEquals(Collections.emptyList(), log.changes(withBarrier(95), MINE, -1));
-		assertEquals(Collections.singletonList("barriers: [STRONG 40% @3610,9497]"), log.changes(withBarrier(44), MINE, -1));
+		assertTrue(log.changes(withBarrier(90), MINE, -1, null).size() > 1);
+		assertEquals(Collections.emptyList(), log.changes(withBarrier(90), MINE, -1, null));
+		assertEquals(Collections.singletonList("barriers: [STRONG 44% @3610,9497]"), log.changes(withBarrier(44), MINE, -1, null));
+	}
+
+	@Test
+	public void keepsTempleStateWhileInAnAltar()
+	{
+		GameLog log = new GameLog();
+		log.changes(withBarrier(90), MINE, -1, null);
+		Snapshot altar = withBarrier(90).toBuilder().location(Location.ALTAR_ROOM).barriers(ImmutableList.of()).build();
+		assertEquals(Collections.singletonList("phase: WAITING ALTAR_ROOM"), log.changes(altar, MINE, -1, null));
 	}
 }
