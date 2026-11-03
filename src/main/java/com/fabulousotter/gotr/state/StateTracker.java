@@ -1493,16 +1493,19 @@ public class StateTracker
 			WorldPoint at = npc.getWorldLocation();
 			barriers.add(new BarrierState(cellTileNear(at), tier, barrierHealth.getOrDefault(at, -1)));
 		}
+		Set<WorldPoint> seen = new HashSet<>();
+		barriers.forEach(b -> seen.add(b.getLocation()));
 		for (BarrierState unseen : unseenBarriers.values())
 		{
 			GroundObject tile = cellTileAt(unseen.getLocation());
 			// A loaded tile that shows empty or broken has lost its barrier.
 			boolean gone = tile != null && (EMPTY_TILES.contains(tile.getId()) || BROKEN_TILES.contains(tile.getId()));
-			if (!gone)
+			if (!gone && !seen.contains(unseen.getLocation()))
 			{
 				barriers.add(unseen);
 			}
 		}
+		unseenBarriers.keySet().removeAll(seen);
 		List<WorldPoint> emptyTiles = new ArrayList<>();
 		List<WorldPoint> brokenTiles = new ArrayList<>();
 		for (GroundObject tile : cellTiles.values())
