@@ -182,6 +182,7 @@ public class GotrAutopilotPlugin extends Plugin
 	private ItemHighlightOverlay itemHighlightOverlay;
 
 	private final Planner planner = new Planner();
+	private static final String CHAT_PREFIX = "[GOTR]";
 	private final GameLog gameLog = new GameLog();
 	// One thread keeps the lines in order and the file IO off the client thread.
 	private final ExecutorService gameLogWriter = Executors.newSingleThreadExecutor(r ->
@@ -295,7 +296,11 @@ public class GotrAutopilotPlugin extends Plugin
 		boolean game = event.getType() == ChatMessageType.GAMEMESSAGE || event.getType() == ChatMessageType.SPAM;
 		if (config.gameLog() && game && snapshot.getLocation() != Location.OUTSIDE)
 		{
-			writeGameLog(snapshot, Collections.singletonList("chat: " + event.getMessage()));
+			String message = Text.removeTags(event.getMessage());
+			if (!message.startsWith(CHAT_PREFIX))
+			{
+				writeGameLog(snapshot, Collections.singletonList("chat: " + message));
+			}
 		}
 	}
 
@@ -988,7 +993,7 @@ public class GotrAutopilotPlugin extends Plugin
 		if (config.chatSteps())
 		{
 			String line = next.getDetail().isEmpty() ? next.getHeadline() : next.getHeadline() + ": " + next.getDetail();
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "<col=00b3a1>[GOTR]</col> " + line, null);
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "<col=00b3a1>" + CHAT_PREFIX + "</col> " + line, null);
 		}
 	}
 
