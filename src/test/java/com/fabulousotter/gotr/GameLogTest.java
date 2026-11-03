@@ -77,4 +77,23 @@ public class GameLogTest
 		Snapshot ended = active.toBuilder().phase(GamePhase.ENDED).power(0).build();
 		assertTrue(log.changes(ended, MINE, -1, null).contains("outcome: LOST at 70% power"));
 	}
+
+	@Test
+	public void keepsBarriersOutOfViewAsLastSeen()
+	{
+		GameLog log = new GameLog();
+		log.changes(withBarrier(90).toBuilder().playerLocation(new WorldPoint(3612, 9500, 0)).build(), MINE, -1, null);
+		Snapshot far = withBarrier(90).toBuilder().playerLocation(new WorldPoint(3640, 9500, 0)).barriers(ImmutableList.of()).build();
+		assertEquals(Collections.singletonList("barriers: [STRONG 90% @3610,9497 (last seen)]"), log.changes(far, MINE, -1, null));
+		Snapshot near = far.toBuilder().playerLocation(new WorldPoint(3612, 9500, 0)).build();
+		assertEquals(Collections.singletonList("barriers: []"), log.changes(near, MINE, -1, null));
+	}
+
+	@Test
+	public void detailChangesAloneDoNotLogANewStep()
+	{
+		GameLog log = new GameLog();
+		log.changes(withBarrier(90), MINE.toBuilder().detail("2 / 110").build(), -1, null);
+		assertEquals(Collections.emptyList(), log.changes(withBarrier(90), MINE.toBuilder().detail("4 / 110").build(), -1, null));
+	}
 }

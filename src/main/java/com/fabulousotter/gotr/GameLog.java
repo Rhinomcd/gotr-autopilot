@@ -49,6 +49,8 @@ class GameLog
 
 	private Map<String, String> last = new LinkedHashMap<>();
 	private GamePhase lastPhase;
+	private final Map<WorldPoint, String> seenBarriers = new LinkedHashMap<>();
+	private static final int VIEW_TILES = 14;
 	// The HUD resets power to zero on a loss, so the outcome reports the last power seen in play.
 	private int lastActivePower;
 
@@ -88,6 +90,10 @@ class GameLog
 		});
 		if (!Objects.equals(last.get("step"), now.get("step")))
 		{
+			if (!i.getDetail().isEmpty())
+			{
+				lines.add("  detail: " + i.getDetail());
+			}
 			lines.add("  carrying: " + carrying(s));
 			lines.add("  timers: " + timers(s));
 		}
@@ -99,20 +105,21 @@ class GameLog
 	{
 		last = new LinkedHashMap<>();
 		lastPhase = null;
+		seenBarriers.clear();
 		lastActivePower = 0;
 	}
 
 	private static final List<String> TEMPLE_ONLY = ImmutableList.of("great guardian health", "barriers", "broken tiles", "empty tiles", "enemies");
 
-	private static Map<String, String> watched(Snapshot s, Instruction i, int greatGuardianHealth, @Nullable String enemies)
+	private Map<String, String> watched(Snapshot s, Instruction i, int greatGuardianHealth, @Nullable String enemies)
 	{
 		Map<String, String> m = new LinkedHashMap<>();
 		m.put("phase", s.getPhase() + " " + s.getLocation());
-		m.put("step", i.getStep() + " \"" + i.getHeadline() + "\"" + (i.getDetail().isEmpty() ? "" : " (" + i.getDetail() + ")"));
+		m.put("step", i.getStep() + " \"" + i.getHeadline() + "\"");
 		m.put("power", s.powerPercent() + "%");
 		m.put("great guardian health", greatGuardianHealth < 0 ? UNSEEN : greatGuardianHealth + "%");
 		m.put("guardians", s.getGuardiansActive() + "/" + s.getGuardiansMax());
-		m.put("barriers", barriers(s));
+		m.put("barriers", barriers(s, seenBarriers));
 		m.put("broken tiles", tiles(s.getBrokenTiles()));
 		m.put("empty tiles", tiles(s.getEmptyTiles()));
 		m.put("enemies", Objects.toString(enemies, UNSEEN));
@@ -124,14 +131,31 @@ class GameLog
 		return m;
 	}
 
-	private static String barriers(Snapshot s)
+	/**
+	 * The client unloads NPCs beyond about 15 tiles, so a barrier missing from far away is kept
+	 * as last seen; one missing from close by is gone.
+	 */
+	private static String barriers(Snapshot s, Map<WorldPoint, String> seen)
 	{
-		StringJoiner j = new StringJoiner(", ", "[", "]");
+		Map<WorldPoint, String> now = new LinkedHashMap<>();
 		for (BarrierState b : s.getBarriers())
 		{
 			String health = b.getHealthPercent() < 0 ? "?" : b.getHealthPercent() + "%";
-			j.add(b.getTier() + " " + health + " @" + at(b.getLocation()));
+			now.put(b.getLocation(), b.getTier() + " " + health + " @" + at(b.getLocation()));
 		}
+		WorldPoint me = s.getPlayerLocation();
+		seen.forEach((tile, last) ->
+		{
+			boolean inView = me != null && me.distanceTo2D(tile) <= VIEW_TILES;
+			if (!now.containsKey(tile) && !inView)
+			{
+				now.put(tile, last.replace(" (last seen)", "") + " (last seen)");
+			}
+		});
+		seen.clear();
+		seen.putAll(now);
+		StringJoiner j = new StringJoiner(", ", "[", "]");
+		now.values().forEach(j::add);
 		return j.toString();
 	}
 
