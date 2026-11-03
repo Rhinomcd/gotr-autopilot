@@ -902,8 +902,16 @@ public class StateTracker
 		else if (CellTier.fromBarrierNpc(id) != null)
 		{
 			barrierNpcs.put(npc.getIndex(), npc);
-			barrierHealth.remove(npc.getWorldLocation());
-			unseenBarriers.remove(cellTileNear(npc.getWorldLocation()));
+			// A barrier coming back into view keeps its last health until its bar shows again.
+			BarrierState unseen = unseenBarriers.remove(cellTileNear(npc.getWorldLocation()));
+			if (unseen != null && unseen.getTier() == CellTier.fromBarrierNpc(id) && unseen.getHealthPercent() >= 0)
+			{
+				barrierHealth.put(npc.getWorldLocation(), unseen.getHealthPercent());
+			}
+			else
+			{
+				barrierHealth.remove(npc.getWorldLocation());
+			}
 		}
 	}
 
