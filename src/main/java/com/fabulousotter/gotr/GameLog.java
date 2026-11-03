@@ -49,6 +49,8 @@ class GameLog
 
 	private Map<String, String> last = new LinkedHashMap<>();
 	private GamePhase lastPhase;
+	// The HUD resets power to zero on a loss, so the outcome reports the last power seen in play.
+	private int lastActivePower;
 
 	/**
 	 * @param greatGuardianHealth percent, or -1 while its health bar is not showing
@@ -66,9 +68,15 @@ class GameLog
 			}
 		}
 		List<String> lines = new ArrayList<>();
-		if (lastPhase == GamePhase.ACTIVE && s.getPhase() == GamePhase.CLOSING)
+		boolean over = s.getPhase() == GamePhase.CLOSING || s.getPhase() == GamePhase.ENDED;
+		if (lastPhase == GamePhase.ACTIVE && over)
 		{
-			lines.add("outcome: " + (s.getMaxPower() > 0 && s.getPower() >= s.getMaxPower() ? "WON" : "LOST at " + s.powerPercent() + "% power"));
+			boolean won = lastActivePower >= 100 || (s.getMaxPower() > 0 && s.getPower() >= s.getMaxPower());
+			lines.add("outcome: " + (won ? "WON" : "LOST at " + lastActivePower + "% power"));
+		}
+		if (s.getPhase() == GamePhase.ACTIVE)
+		{
+			lastActivePower = s.powerPercent();
 		}
 		lastPhase = s.getPhase();
 		now.forEach((key, value) ->
@@ -91,6 +99,7 @@ class GameLog
 	{
 		last = new LinkedHashMap<>();
 		lastPhase = null;
+		lastActivePower = 0;
 	}
 
 	private static final List<String> TEMPLE_ONLY = ImmutableList.of("great guardian health", "barriers", "broken tiles", "empty tiles", "enemies");

@@ -28,6 +28,7 @@ import com.fabulousotter.gotr.model.CellTier;
 import com.fabulousotter.gotr.plan.Instruction;
 import com.fabulousotter.gotr.plan.Step;
 import com.fabulousotter.gotr.state.BarrierState;
+import com.fabulousotter.gotr.state.GamePhase;
 import com.fabulousotter.gotr.state.Location;
 import com.fabulousotter.gotr.state.Snapshot;
 import com.google.common.collect.ImmutableList;
@@ -65,5 +66,15 @@ public class GameLogTest
 		log.changes(withBarrier(90), MINE, -1, null);
 		Snapshot altar = withBarrier(90).toBuilder().location(Location.ALTAR_ROOM).barriers(ImmutableList.of()).build();
 		assertEquals(Collections.singletonList("phase: WAITING ALTAR_ROOM"), log.changes(altar, MINE, -1, null));
+	}
+
+	@Test
+	public void reportsALossAtThePowerLastSeenInPlay()
+	{
+		GameLog log = new GameLog();
+		Snapshot active = withBarrier(90).toBuilder().phase(GamePhase.ACTIVE).power(70).maxPower(100).build();
+		log.changes(active, MINE, -1, null);
+		Snapshot ended = active.toBuilder().phase(GamePhase.ENDED).power(0).build();
+		assertTrue(log.changes(ended, MINE, -1, null).contains("outcome: LOST at 70% power"));
 	}
 }
