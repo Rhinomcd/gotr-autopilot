@@ -1517,7 +1517,9 @@ public class Planner
 				}
 				// Both slots taken but not both overcharged: the guide keeps the cell for the next
 				// guardian to fall, once the centre is strong enough to cross 60%.
-				if (!slotFree && defence.getOverchargedGuardians() < 2 && centre != null && centre.getTier().isAtLeast(CellTier.STRONG))
+				boolean slotsFull = s.getGuardiansActive() >= s.getGuardiansMax();
+				if (slotsFull && s.isChisel() && defence.getOverchargedGuardians() < 2 && centre != null
+					&& centre.getTier().isAtLeast(CellTier.STRONG) && !overchargedAltarOpen(s))
 				{
 					return null;
 				}
@@ -1602,6 +1604,19 @@ public class Planner
 	private static SoloDefence soloDefence(Snapshot s, PlannerSettings c)
 	{
 		return SoloDefence.of(s, soloCentreBarrier(s, c));
+	}
+
+	// An open overcharged altar replaces a held cell: the guide spends the held one before entering.
+	private static boolean overchargedAltarOpen(Snapshot s)
+	{
+		for (Altar altar : new Altar[]{s.getActiveElemental(), s.getActiveCatalytic()})
+		{
+			if (altar != null && altar.getCellTier() == CellTier.OVERCHARGED && AltarChooser.unusableReason(altar, s) == null)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// Every open altar gives a weak cell: nothing at the altars is worth more than the portal.
