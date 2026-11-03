@@ -1220,7 +1220,7 @@ public class Planner
 		return s.getLastStep() == Step.CRAFT_ESSENCE || s.getLastStep() == Step.FILL_POUCHES;
 	}
 
-	private static boolean topUpWorthIt(Snapshot s, int essence)
+	private boolean topUpWorthIt(Snapshot s, int essence)
 	{
 		int craftable = Math.min(craftable(s), s.capacity());
 		return craftable > 0 && (craftable >= MIN_TOPUP || essence < MIN_TRIP_ESSENCE);
