@@ -392,4 +392,17 @@ public interface GotrAutopilotConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigItem(
+		keyName = "gameLog",
+		name = "Write game log",
+		description = "Record each game's steps, barriers, guardians, power<br>"
+			+ "and game messages to .runelite/gotr-autopilot/",
+		section = displaySection,
+		position = 11
+	)
+	default boolean gameLog()
+	{
+		return true;
+	}
 }

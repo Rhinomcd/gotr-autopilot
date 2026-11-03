@@ -41,6 +41,14 @@ import com.fabulousotter.gotr.state.Snapshot;
 import com.fabulousotter.gotr.state.StateTracker;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -58,6 +66,7 @@ import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.GameObject;
@@ -78,6 +87,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.Notifier;
+import net.runelite.client.RuneLite;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -166,6 +176,8 @@ public class GotrAutopilotPlugin extends Plugin
 	private ItemHighlightOverlay itemHighlightOverlay;
 
 	private final Planner planner = new Planner();
+	private final GameLog gameLog = new GameLog();
+	private static final Path GAME_LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("gotr-autopilot");
 
 	@Getter
 	private Snapshot snapshot = Snapshot.OUTSIDE;
@@ -265,12 +277,57 @@ public class GotrAutopilotPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		boolean game = event.getType() == ChatMessageType.GAMEMESSAGE || event.getType() == ChatMessageType.SPAM;
+		if (game && snapshot.getLocation() != Location.OUTSIDE)
+		{
+			writeGameLog(snapshot, Collections.singletonList("chat: " + event.getMessage()));
+		}
+	}
+
+	private int greatGuardianHealth()
+	{
+		NPC guardian = tracker.getGreatGuardian();
+		if (guardian == null || guardian.getHealthRatio() < 0 || guardian.getHealthScale() <= 0)
+		{
+			return -1;
+		}
+		return guardian.getHealthRatio() * 100 / guardian.getHealthScale();
+	}
+
+	private void writeGameLog(Snapshot s, List<String> lines)
+	{
+		if (!config.gameLog() || lines.isEmpty())
+		{
+			return;
+		}
+		String prefix = LocalTime.now().truncatedTo(ChronoUnit.SECONDS) + " t" + s.getSecondsSinceStart() + "s ";
+		StringBuilder sb = new StringBuilder();
+		for (String line : lines)
+		{
+			sb.append(prefix).append(line).append('\n');
+		}
+		try
+		{
+			Files.createDirectories(GAME_LOG_DIR);
+			Files.write(GAME_LOG_DIR.resolve(LocalDate.now() + ".log"), sb.toString().getBytes(StandardCharsets.UTF_8),
+				StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+		}
+		catch (IOException e)
+		{
+			log.warn("Could not write the game log", e);
+		}
+	}
+
+	@Subscribe
 	public void onGameTick(GameTick event)
 	{
 		tracker.tick();
 		Snapshot s = tracker.snapshot();
 		if (s.getLocation() == Location.OUTSIDE)
 		{
+			gameLog.reset();
 			clearInstruction();
 			pathfinder.clear();
 			return;
@@ -305,6 +362,7 @@ public class GotrAutopilotPlugin extends Plugin
 		lastTile = next.getTarget() == Target.CELL_TILE || next.getTarget() == Target.BARRIER ? next.getLocation() : null;
 		snapshot = s;
 		instruction = next;
+		writeGameLog(s, gameLog.changes(s, next, greatGuardianHealth()));
 
 		boolean altarSwitched = next.getStep() == Step.GO_TO_ALTAR && lastStep == Step.GO_TO_ALTAR
 			&& next.getAltar() != null && next.getAltar() != lastAltar;
