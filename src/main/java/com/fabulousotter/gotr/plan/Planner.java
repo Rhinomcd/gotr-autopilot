@@ -197,26 +197,17 @@ public class Planner
 	private Instruction spendCellBeforeGame(Snapshot s, PlannerSettings c, String when)
 	{
 		Set<Integer> cell = ImmutableSet.of(s.getChargedCell().getCellItemId());
+		// Once the round is over the essence piles take the cell but no guardian forms.
+		boolean closing = s.getPhase() == GamePhase.CLOSING || s.getPhase() == GamePhase.ENDED;
 		if (c.getStrategy() == Strategy.SOLO)
 		{
-			if (s.getGuardiansActive() == 0 && s.isChisel())
+			if (s.getGuardiansActive() == 0 && s.isChisel() && !closing)
 			{
 				return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN).headline("Make a weak elemental guardian")
 					.detail("Use the cell on the east essence pile")
 					.target(Target.ESSENCE_PILE_ELEMENTAL).items(cell).build();
 			}
 			WorldPoint tile = soloTile(s);
-			// A cell left from the last trip is lost with the round: in the closing window a
-			// guardian is what the wiki suggests for it, once the barrier stands.
-			boolean closing = s.getPhase() == GamePhase.CLOSING || s.getPhase() == GamePhase.ENDED;
-			if (closing && tile == null && s.getGuardiansActive() < s.getGuardiansMax() && s.isChisel())
-			{
-				Alignment alignment = shortAlignment(s, c);
-				return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN)
-					.headline(guardianHeadline(s.getChargedCell(), alignment))
-					.detail("Use the cell on the essence pile")
-					.target(pileFor(alignment)).items(cell).build();
-			}
 			if (tile != null)
 			{
 				String noChisel = !s.isChisel() && s.getGuardiansActive() == 0 && c.getDesiredGuardians() > 0 ? NO_CHISEL : "";
@@ -239,7 +230,7 @@ public class Planner
 				.target(Target.CELL_TILE).location(emptyTile(s)).items(cell).build();
 		}
 		if (s.getGuardiansActive() < Math.max(c.getDesiredGuardians(), s.getGuardiansMax()) && s.isChisel()
-			&& s.getGuardiansActive() < s.getGuardiansMax())
+			&& s.getGuardiansActive() < s.getGuardiansMax() && !closing)
 		{
 			Alignment alignment = shortAlignment(s, c);
 			return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN)
@@ -300,6 +291,11 @@ public class Planner
 			}
 			if (s.capacity() >= c.getPortalMinCapacity() && !s.energyCapped())
 			{
+				Instruction reserve = topUpRepairReserve(s, c, left);
+				if (reserve != null)
+				{
+					return reserve;
+				}
 				String leftText = left >= 0 ? left + "s left" : "";
 				return Instruction.builder().step(Step.ENTER_PORTAL).headline("Enter the portal" + direction(s))
 					.detail(leftText).target(Target.PORTAL).urgency(Urgency.HIGH).build();
@@ -364,6 +360,27 @@ public class Planner
 			|| last == Step.PRE_REPAIR_POUCHES;
 		int slack = wasGrace ? 5 : last == Step.ENTER_PORTAL ? -5 : 0;
 		return s.energyCapped() || (close >= 0 && close <= (left >= 0 ? left : 30) + GRACE_MARGIN_SECONDS + slack);
+	}
+
+	/**
+	 * Mining when the portal opens, finish the fragments for one tile repair if the portal can
+	 * still be made: the huge remains give no fragments, and a tile broken meanwhile would
+	 * otherwise send the player back across the temple for the last few.
+	 */
+	@Nullable
+	private Instruction topUpRepairReserve(Snapshot s, PlannerSettings c, int left)
+	{
+		int missing = TILE_REPAIR_FRAGMENTS - s.getFragments();
+		if (s.getLastStep() != Step.MINE_FRAGMENTS || missing <= 0 || left < 0)
+		{
+			return null;
+		}
+		int mining = (int) Math.ceil(missing / s.getFragmentsPerTick() * 0.6);
+		if (mining + walkSeconds(s, Target.PORTAL, 20) + 3 > left)
+		{
+			return null;
+		}
+		return mineFragments(s, c, TILE_REPAIR_FRAGMENTS);
 	}
 
 	// A wait in the temple is time enough for NPC Contact, cast from anywhere.
