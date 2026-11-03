@@ -48,7 +48,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.temporal.ChronoUnit;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -183,6 +183,7 @@ public class GotrAutopilotPlugin extends Plugin
 
 	private final Planner planner = new Planner();
 	private static final String CHAT_PREFIX = "[GOTR]";
+	private static final DateTimeFormatter LOG_TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 	private final GameLog gameLog = new GameLog();
 	// One thread keeps the lines in order and the file IO off the client thread.
 	private final ExecutorService gameLogWriter = Executors.newSingleThreadExecutor(r ->
@@ -346,7 +347,7 @@ public class GotrAutopilotPlugin extends Plugin
 		{
 			return;
 		}
-		String prefix = LocalTime.now().truncatedTo(ChronoUnit.SECONDS) + " t" + s.getSecondsSinceStart() + "s ";
+		String prefix = LocalTime.now().format(LOG_TIME) + " t" + s.getSecondsSinceStart() + "s ";
 		StringBuilder sb = new StringBuilder();
 		for (String line : lines)
 		{
