@@ -93,7 +93,7 @@ public class Planner
 	{
 		fragmentReserve = c.getStrategy() == Strategy.SOLO ? TILE_REPAIR_FRAGMENTS : 0;
 		soloSkipsPortals = c.getStrategy() == Strategy.SOLO && s.getPhase() == GamePhase.ACTIVE
-			&& !soloDefence(s, c).holdsTheRift() && !weakAltarSet(s);
+			&& (soloTile(s) != null || !s.getBrokenTiles().isEmpty() || !soloDefence(s, c).holdsTheRift() && !weakAltarSet(s));
 		if (!c.isDepositRunes() && s.getDepositableRunes() > 0)
 		{
 			// The runes stay where they are and simply take their inventory slots.
