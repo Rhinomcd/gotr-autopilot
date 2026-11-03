@@ -181,7 +181,9 @@ public class Planner
 			return Instruction.builder().step(Step.PRE_TAKE_WEAK_CELL).headline("Collect a weak cell")
 				.detail(when).target(Target.WEAK_CELL_TABLE).build();
 		}
-		if (!positioning && s.getChargedCell() != null)
+		// Solo starts with its barrier up whatever the clock: without it the opening run is undefended.
+		boolean soloBarrierMissing = c.getStrategy() == Strategy.SOLO && soloTile(s) != null;
+		if ((!positioning || soloBarrierMissing) && s.getChargedCell() != null)
 		{
 			Instruction spend = spendCellBeforeGame(s, c, when);
 			if (spend != null)
@@ -471,7 +473,8 @@ public class Planner
 	private Instruction afterStones(Snapshot s, PlannerSettings c)
 	{
 		// A cell kept back at the start is spent after the opening run, not on the way out.
-		if (s.getChargedCell() != null && (!openingRunUnderway(s, c) || anyBarrierCritical(s)))
+		boolean soloBarrierMissing = c.getStrategy() == Strategy.SOLO && soloTile(s) != null;
+		if (s.getChargedCell() != null && (!openingRunUnderway(s, c) || anyBarrierCritical(s) || soloBarrierMissing))
 		{
 			Instruction cell = cellPlan(s, c);
 			if (cell != null)
