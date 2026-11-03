@@ -109,6 +109,8 @@ public class Snapshot
 	int freeSlots;
 	@Builder.Default
 	Set<Altar> talismans = ImmutableSet.of();
+	@Builder.Default
+	Set<Altar> runeTalismans = ImmutableSet.of();
 	int depositableRunes;
 	// Runes carried that the settings say to keep, by lower-case name ("earth", "astral").
 	@Builder.Default
@@ -214,21 +216,6 @@ public class Snapshot
 	 * The carried base rune that makes a combination rune at this altar, the larger stack when
 	 * both do, or null when none does.
 	 */
-	@Nullable
-	public Altar baseRuneFor(Altar altar)
-	{
-		Altar best = null;
-		for (Map.Entry<Altar, Integer> base : baseRunes.entrySet())
-		{
-			boolean makesOne = base.getValue() > 0 && CombinationRune.of(altar, base.getKey()) != null;
-			if (makesOne && (best == null || base.getValue() > baseRunes.get(best)))
-			{
-				best = base.getKey();
-			}
-		}
-		return best;
-	}
-
 	public int essenceTotal()
 	{
 		return essence + pouchStored();

@@ -44,8 +44,6 @@ public class PlannerSettings
 	@Builder.Default
 	int desiredGuardians = 2;
 	@Builder.Default
-	boolean combinationRunes = false;
-	@Builder.Default
 	boolean balanceWithSavedPoints = true;
 	@Builder.Default
 	int maxImbalance = 200;

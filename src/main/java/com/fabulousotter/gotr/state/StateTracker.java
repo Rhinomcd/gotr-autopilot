@@ -102,6 +102,7 @@ import net.runelite.api.WorldView;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 
 /**
@@ -125,7 +126,7 @@ public class StateTracker
 	private static final Pattern REWARD_TOTAL = Pattern.compile(
 		"Total elemental energy:[^>]+>([\\d,]+).*Total catalytic energy:[^>]+>([\\d,]+)");
 	private static final Pattern CHECK_POINTS = Pattern.compile(
-		"You have (\\d+) catalytic energy and (\\d+) elemental energy");
+		"You have ([\\d,]+) catalytic energy and ([\\d,]+) elemental energy");
 	private static final Pattern COUNTDOWN = Pattern.compile("The rift will become active in (\\d+) seconds");
 
 	private static final Set<Integer> RUNE_POUCH_ITEMS = ImmutableSet.of(
@@ -256,7 +257,7 @@ public class StateTracker
 	// The client only keeps NPCs within about 15 tiles, and the guardian never moves, so its
 	// position is remembered from the last spawn for use from the far side of the temple.
 	@Getter
-	private WorldPoint greatGuardianCentre;
+	private WorldPoint greatGuardianSouthWest;
 	@Getter
 	private int greatGuardianSize;
 	// The Rewards Guardian in the waiting area outside the barrier.
@@ -297,6 +298,7 @@ public class StateTracker
 	private boolean pickaxeWorn;
 	private int freeSlots = INVENTORY_SIZE;
 	private final Set<Altar> talismans = new HashSet<>();
+	private final Set<Altar> runeTalismans = new HashSet<>();
 	private final Map<Integer, Integer> runeStacks = new HashMap<>();
 	// Lower-case rune names without the " rune", matched against the runes to keep.
 	private final Map<Integer, String> runeNames = new HashMap<>();
@@ -387,7 +389,7 @@ public class StateTracker
 		altarExits.clear();
 		altarRoom = null;
 		greatGuardian = null;
-		greatGuardianCentre = null;
+		greatGuardianSouthWest = null;
 		greatGuardianSize = 0;
 		rewardTrader = null;
 		cordelia = null;
@@ -448,6 +450,7 @@ public class StateTracker
 	public void primeFromClient()
 	{
 		loadBreak();
+		loadPoints();
 		if (client.getGameState() != GameState.LOGGED_IN)
 		{
 			return;
@@ -576,18 +579,20 @@ public class StateTracker
 			hudGuardianTicks = toInt(args[10]);
 			hudPortalTicks = toInt(args[11]);
 			hudTick = client.getTickCount();
-			if (portalLocation > 0 && hudPortalLocation <= 0)
+			int previousPortalLocation = hudPortalLocation;
+			hudPortalLocation = portalLocation;
+			// First, so a recovered game start does not wipe the portal this update reports.
+			updatePhaseFromHud();
+			if (portalLocation > 0 && previousPortalLocation <= 0)
 			{
 				lastPortalSpawnTick = hudTick;
 				anyPortalThisGame = true;
 			}
-			hudPortalLocation = portalLocation;
 			portalOpen = portalLocation > 0;
 			if (portalOpen)
 			{
 				portalClosesTick = hudPortalTicks >= 0 ? hudTick + hudPortalTicks : -1;
 			}
-			updatePhaseFromHud();
 		}
 		catch (NumberFormatException ex)
 		{
@@ -629,9 +634,25 @@ public class StateTracker
 		else if ((phase == GamePhase.WAITING || phase == GamePhase.ENDED)
 			&& (hudPower > 0 || hudElementalIndex > 0 || hudCatalyticIndex > 0))
 		{
-			phase = GamePhase.ACTIVE;
-			pointsCredited = false;
+			startGame(-1);
 		}
+	}
+
+	private void startGame(int startTick)
+	{
+		rates.reset();
+		pointsCredited = false;
+		phase = GamePhase.ACTIVE;
+		gameStartTick = startTick;
+		startAtTick = -1;
+		closingTick = -1;
+		gameEndTick = -1;
+		lastPortalSpawnTick = -1;
+		anyPortalThisGame = false;
+		altarVisitedThisGame = false;
+		portalOpen = false;
+		portalClosesTick = -1;
+		// The barriers and guardians built before the start stand into the game.
 	}
 
 	@Subscribe
@@ -657,19 +678,7 @@ public class StateTracker
 		if (msg.contains("The rift becomes active!"))
 		{
 			learnBreak(tick);
-			rates.reset();
-			pointsCredited = false;
-			phase = GamePhase.ACTIVE;
-			gameStartTick = tick;
-			startAtTick = -1;
-			closingTick = -1;
-			gameEndTick = -1;
-			lastPortalSpawnTick = -1;
-			anyPortalThisGame = false;
-			altarVisitedThisGame = false;
-			portalOpen = false;
-			portalClosesTick = -1;
-			// The barriers and guardians built before the start stand into the game.
+			startGame(tick);
 			return;
 		}
 		if (msg.contains("The Portal Guardians will keep their rifts open for another 30 seconds"))
@@ -943,7 +952,7 @@ public class StateTracker
 		if (id == NpcID.GOTR_GREAT_GUARDIAN)
 		{
 			greatGuardian = npc;
-			greatGuardianCentre = npc.getWorldLocation();
+			greatGuardianSouthWest = npc.getWorldLocation();
 			greatGuardianSize = npc.getComposition() == null ? 1 : Math.max(1, npc.getComposition().getSize());
 		}
 		else if (CORDELIA_NPCS.contains(id))
@@ -1056,6 +1065,7 @@ public class StateTracker
 		pickaxeInInventory = false;
 		runePouch = false;
 		talismans.clear();
+		runeTalismans.clear();
 		runeStacks.clear();
 		runeNames.clear();
 		pouchesPresent.clear();
@@ -1113,6 +1123,12 @@ public class StateTracker
 			if (talisman != null)
 			{
 				talismans.add(talisman);
+				continue;
+			}
+			Altar runeTalisman = Altar.fromRuneTalisman(id);
+			if (runeTalisman != null)
+			{
+				runeTalismans.add(runeTalisman);
 				continue;
 			}
 			PouchType pouch = PouchType.fromItem(id);
@@ -1237,8 +1253,8 @@ public class StateTracker
 			Matcher m = CHECK_POINTS.matcher(text.getText());
 			if (m.find())
 			{
-				savedCatalyticPoints = Integer.parseInt(m.group(1));
-				savedElementalPoints = Integer.parseInt(m.group(2));
+				savedCatalyticPoints = Integer.parseInt(m.group(1).replace(",", ""));
+				savedElementalPoints = Integer.parseInt(m.group(2).replace(",", ""));
 				savePoints();
 			}
 		}
@@ -1254,9 +1270,7 @@ public class StateTracker
 		if (phase == GamePhase.COUNTDOWN && startAtTick >= 0 && tick > startAtTick + 20)
 		{
 			// The start message was missed (chat filtered): treat the game as running.
-			phase = GamePhase.ACTIVE;
-			gameStartTick = startAtTick;
-			startAtTick = -1;
+			startGame(startAtTick);
 		}
 		int closeTick = closingTick >= 0 ? closingTick + CLOSING_SECONDS * 10 / 6 : -1;
 		if (phase == GamePhase.CLOSING && closeTick >= 0 && tick > closeTick + 10)
@@ -1495,17 +1509,14 @@ public class StateTracker
 		}
 		Set<WorldPoint> seen = new HashSet<>();
 		barriers.forEach(b -> seen.add(b.getLocation()));
-		for (BarrierState unseen : unseenBarriers.values())
+		unseenBarriers.keySet().removeAll(seen);
+		// A loaded tile that shows empty or broken has lost its barrier.
+		unseenBarriers.values().removeIf(unseen ->
 		{
 			GroundObject tile = cellTileAt(unseen.getLocation());
-			// A loaded tile that shows empty or broken has lost its barrier.
-			boolean gone = tile != null && (EMPTY_TILES.contains(tile.getId()) || BROKEN_TILES.contains(tile.getId()));
-			if (!gone && !seen.contains(unseen.getLocation()))
-			{
-				barriers.add(unseen);
-			}
-		}
-		unseenBarriers.keySet().removeAll(seen);
+			return tile != null && (EMPTY_TILES.contains(tile.getId()) || BROKEN_TILES.contains(tile.getId()));
+		});
+		barriers.addAll(unseenBarriers.values());
 		List<WorldPoint> emptyTiles = new ArrayList<>();
 		List<WorldPoint> brokenTiles = new ArrayList<>();
 		for (GroundObject tile : cellTiles.values())
@@ -1608,6 +1619,7 @@ public class StateTracker
 			.pickaxe(pickaxeInInventory || pickaxeWorn)
 			.freeSlots(freeSlots)
 			.talismans(ImmutableSet.copyOf(talismans))
+			.runeTalismans(ImmutableSet.copyOf(runeTalismans))
 			.depositableRunes(depositable)
 			.keptRunes(kept)
 			.baseRunes(baseRunes)
@@ -1683,21 +1695,29 @@ public class StateTracker
 	{
 		Integer saved = configManager.getConfiguration(GotrAutopilotConfig.GROUP, BREAK_KEY, Integer.class);
 		learnedBreakSeconds = saved == null ? -1 : saved;
+	}
+
+	@Subscribe
+	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
+	{
+		loadPoints();
+	}
+
+	private void loadPoints()
+	{
 		// Banked points are only announced at the end of a game or by the Rewards Guardian, so
-		// the last known totals carry over between sessions.
-		Integer elemental = configManager.getConfiguration(GotrAutopilotConfig.GROUP, ELEMENTAL_POINTS_KEY, Integer.class);
-		Integer catalytic = configManager.getConfiguration(GotrAutopilotConfig.GROUP, CATALYTIC_POINTS_KEY, Integer.class);
-		if (elemental != null && catalytic != null)
-		{
-			savedElementalPoints = elemental;
-			savedCatalyticPoints = catalytic;
-		}
+		// the last known totals carry over between sessions, per account.
+		Integer elemental = configManager.getRSProfileConfiguration(GotrAutopilotConfig.GROUP, ELEMENTAL_POINTS_KEY, Integer.class);
+		Integer catalytic = configManager.getRSProfileConfiguration(GotrAutopilotConfig.GROUP, CATALYTIC_POINTS_KEY, Integer.class);
+		boolean known = elemental != null && catalytic != null;
+		savedElementalPoints = known ? elemental : -1;
+		savedCatalyticPoints = known ? catalytic : -1;
 	}
 
 	private void savePoints()
 	{
-		configManager.setConfiguration(GotrAutopilotConfig.GROUP, ELEMENTAL_POINTS_KEY, savedElementalPoints);
-		configManager.setConfiguration(GotrAutopilotConfig.GROUP, CATALYTIC_POINTS_KEY, savedCatalyticPoints);
+		configManager.setRSProfileConfiguration(GotrAutopilotConfig.GROUP, ELEMENTAL_POINTS_KEY, savedElementalPoints);
+		configManager.setRSProfileConfiguration(GotrAutopilotConfig.GROUP, CATALYTIC_POINTS_KEY, savedCatalyticPoints);
 	}
 
 	private int breakSeconds()

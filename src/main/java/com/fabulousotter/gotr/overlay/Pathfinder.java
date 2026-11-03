@@ -462,7 +462,14 @@ public class Pathfinder
 			return false;
 		}
 		int[][] flags = maps[plane].getFlags();
-		LocalPoint lp = me.getLocalLocation();
+		WorldPoint start = me.getWorldLocation();
+		// The server tile, not the drawn position, which trails it while moving.
+		LocalPoint lp = LocalPoint.fromWorld(wv, start);
+		if (lp == null)
+		{
+			clear();
+			return false;
+		}
 		int sx = lp.getSceneX();
 		int sy = lp.getSceneY();
 		if (fieldView != wv || fieldPlane != plane || fieldFlags != flags
@@ -482,7 +489,6 @@ public class Pathfinder
 			clear();
 			return false;
 		}
-		WorldPoint start = me.getWorldLocation();
 		if (!start.equals(fieldStart))
 		{
 			sweepFrom(sx, sy, transports, true);

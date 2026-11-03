@@ -31,11 +31,14 @@ import com.fabulousotter.gotr.model.CombinationRune;
 import com.fabulousotter.gotr.state.BarrierState;
 import com.fabulousotter.gotr.state.Snapshot;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 
 class AltarChooser
 {
+	private static final int MAGIC_IMBUE_LEVEL = 82;
+
 	private AltarChooser()
 	{
 	}
@@ -126,25 +129,32 @@ class AltarChooser
 	@Nullable
 	static CombinationRune combinationAt(Altar altar, Snapshot s, PlannerSettings c)
 	{
-		Altar base = s.baseRuneFor(altar);
-		if (!c.isCombinationRunes() || altar.getAlignment() != Alignment.ELEMENTAL || base == null)
+		Altar base = combinationBase(altar, s);
+		return base == null ? null : CombinationRune.of(altar, base);
+	}
+
+	// The carried base rune, largest stack first, that makes a combination rune here.
+	@Nullable
+	static Altar combinationBase(Altar altar, Snapshot s)
+	{
+		if (altar.getAlignment() != Alignment.ELEMENTAL
+			|| !s.isBindingNecklaceWorn() || s.getNecklaceCharges() <= 0)
 		{
 			return null;
 		}
-		CombinationRune combo = CombinationRune.of(altar, base);
-		if (combo == null || combo.getLevelRequired() > s.getRunecraftLevel())
+		boolean imbue = s.isLunarSpellbook() && s.getMagicLevel() >= MAGIC_IMBUE_LEVEL;
+		Altar best = null;
+		for (Map.Entry<Altar, Integer> base : s.getBaseRunes().entrySet())
 		{
-			return null;
+			CombinationRune combo = CombinationRune.of(altar, base.getKey());
+			boolean usable = base.getValue() > 0 && combo != null && combo.getLevelRequired() <= s.getRunecraftLevel()
+				&& (imbue || s.getRuneTalismans().contains(base.getKey()));
+			if (usable && (best == null || base.getValue() > s.getBaseRunes().get(best)))
+			{
+				best = base.getKey();
+			}
 		}
-		if (!s.isBindingNecklaceWorn() || s.getNecklaceCharges() <= 0)
-		{
-			return null;
-		}
-		if (!s.isLunarSpellbook() && !s.getTalismans().contains(base))
-		{
-			return null;
-		}
-		return combo;
+		return best;
 	}
 
 	private static boolean better(AltarChoice a, AltarChoice b, Snapshot s, PlannerSettings c, int essence)
@@ -190,9 +200,10 @@ class AltarChooser
 		{
 			return true;
 		}
+		BarrierState leftWeak = Planner.protectedBarrier(s, c);
 		for (BarrierState barrier : s.getBarriers())
 		{
-			if (barrier.getTier().getRank() < CellTier.STRONG.getRank())
+			if (barrier != leftWeak && barrier.getTier().getRank() < CellTier.STRONG.getRank())
 			{
 				return true;
 			}

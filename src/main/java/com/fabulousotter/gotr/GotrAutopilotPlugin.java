@@ -43,6 +43,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -192,6 +193,7 @@ public class GotrAutopilotPlugin extends Plugin
 		thread.setDaemon(true);
 		return thread;
 	});
+	private static final int GAME_LOG_DAYS_KEPT = 14;
 	private static final Path GAME_LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("gotr-autopilot");
 
 	@Getter
@@ -232,6 +234,7 @@ public class GotrAutopilotPlugin extends Plugin
 		eventBus.register(tracker);
 		renderCallbackManager.register(drawListener);
 		clientThread.invokeLater(tracker::primeFromClient);
+		gameLogWriter.execute(GotrAutopilotPlugin::pruneGameLogs);
 	}
 
 	@Override
@@ -243,9 +246,13 @@ public class GotrAutopilotPlugin extends Plugin
 		overlayManager.remove(instructionOverlay);
 		overlayManager.remove(sceneOverlay);
 		overlayManager.remove(itemHighlightOverlay);
-		tracker.reset();
-		clearInstruction();
-		pathfinder = null;
+		clientThread.invoke(() ->
+		{
+			tracker.reset();
+			gameLog.reset();
+			clearInstruction();
+			pathfinder.clear();
+		});
 	}
 
 	// Called for every renderable each frame, so it does nothing but compare references.
@@ -341,6 +348,29 @@ public class GotrAutopilotPlugin extends Plugin
 		return guardian.getHealthRatio() * 100 / guardian.getHealthScale();
 	}
 
+	private static void pruneGameLogs()
+	{
+		if (!Files.isDirectory(GAME_LOG_DIR))
+		{
+			return;
+		}
+		String oldestKept = LocalDate.now().minusDays(GAME_LOG_DAYS_KEPT) + ".log";
+		try (DirectoryStream<Path> files = Files.newDirectoryStream(GAME_LOG_DIR, "*.log"))
+		{
+			for (Path file : files)
+			{
+				if (file.getFileName().toString().compareTo(oldestKept) < 0)
+				{
+					Files.delete(file);
+				}
+			}
+		}
+		catch (IOException e)
+		{
+			log.warn("Could not prune the game logs", e);
+		}
+	}
+
 	private void writeGameLog(Snapshot s, List<String> lines)
 	{
 		if (lines.isEmpty())
@@ -406,7 +436,7 @@ public class GotrAutopilotPlugin extends Plugin
 		{
 			// With no reachable wait tile, the guardian itself is the destination.
 			WorldPoint wait = centreWaitTile();
-			next = next.toBuilder().location(wait != null ? wait : tracker.getGreatGuardianCentre()).build();
+			next = next.toBuilder().location(wait != null ? wait : tracker.getGreatGuardianSouthWest()).build();
 		}
 		lastTile = next.getTarget() == Target.CELL_TILE || next.getTarget() == Target.BARRIER ? next.getLocation() : null;
 		snapshot = s;
@@ -459,18 +489,14 @@ public class GotrAutopilotPlugin extends Plugin
 		}
 		if (targetNpc != null)
 		{
-			LocalPoint lp = targetNpc.getLocalLocation();
-			if (lp == null)
+			int[] box = footprint(player, targetNpc.getWorldLocation(), npcSize(targetNpc));
+			if (box == null)
 			{
 				return Pathfinder.Path.EMPTY;
 			}
-			int size = npcSize(targetNpc);
-			// getLocalLocation is the centre of the NPC; the footprint's south-west corner is offset.
-			int minX = lp.getSceneX() - (size - 1) / 2;
-			int minY = lp.getSceneY() - (size - 1) / 2;
 			// Approach barriers from the temple side.
 			Point toward = next.getTarget() == Target.BARRIER ? templeCentre() : null;
-			Pathfinder.Path route = pathfinder.pathTo(minX, minY, minX + size - 1, minY + size - 1, transports, toward);
+			Pathfinder.Path route = pathfinder.pathTo(box[0], box[1], box[2], box[3], transports, toward);
 			return next.getTarget() == Target.BARRIER ? route.endingAt(targetNpc.getWorldLocation()) : route;
 		}
 		if (targetObject instanceof GameObject)
@@ -662,30 +688,25 @@ public class GotrAutopilotPlugin extends Plugin
 	private int[] guardianFootprint()
 	{
 		NPC guardian = tracker.getGreatGuardian();
-		int size;
-		int cx;
-		int cy;
-		if (guardian != null && guardian.getLocalLocation() != null)
+		Player player = client.getLocalPlayer();
+		if (guardian != null)
 		{
-			size = npcSize(guardian);
-			cx = guardian.getLocalLocation().getSceneX();
-			cy = guardian.getLocalLocation().getSceneY();
+			return footprint(player, guardian.getWorldLocation(), npcSize(guardian));
 		}
-		else
+		return footprint(player, tracker.getGreatGuardianSouthWest(), Math.max(1, tracker.getGreatGuardianSize()));
+	}
+
+	// An NPC's world location is the south-west tile of its footprint.
+	@Nullable
+	private static int[] footprint(@Nullable Player player, @Nullable WorldPoint southWest, int size)
+	{
+		LocalPoint lp = player == null || southWest == null ? null : LocalPoint.fromWorld(player.getWorldView(), southWest);
+		if (lp == null)
 		{
-			Player player = client.getLocalPlayer();
-			WorldPoint centre = tracker.getGreatGuardianCentre();
-			LocalPoint lp = player == null || centre == null ? null : LocalPoint.fromWorld(player.getWorldView(), centre);
-			if (lp == null)
-			{
-				return null;
-			}
-			size = Math.max(1, tracker.getGreatGuardianSize());
-			cx = lp.getSceneX();
-			cy = lp.getSceneY();
+			return null;
 		}
-		int minX = cx - (size - 1) / 2;
-		int minY = cy - (size - 1) / 2;
+		int minX = lp.getSceneX();
+		int minY = lp.getSceneY();
 		return new int[]{minX, minY, minX + size - 1, minY + size - 1};
 	}
 
@@ -697,7 +718,7 @@ public class GotrAutopilotPlugin extends Plugin
 			return true;
 		}
 		return next.getTarget() == Target.CENTRE_WAIT && next.getLocation() != null
-			&& next.getLocation().equals(tracker.getGreatGuardianCentre());
+			&& next.getLocation().equals(tracker.getGreatGuardianSouthWest());
 	}
 
 	private static int npcSize(NPC npc)
@@ -957,16 +978,12 @@ public class GotrAutopilotPlugin extends Plugin
 
 	private PlannerSettings settingsFor(Snapshot s)
 	{
-		boolean anyBase = s.getBaseRunes().values().stream().anyMatch(count -> count > 0);
-		boolean combo = s.isBindingNecklaceWorn() && s.getMagicLevel() >= 82 && anyBase
-			&& (s.isLunarSpellbook() || s.getBaseRunes().keySet().stream().anyMatch(s.getTalismans()::contains));
 		return PlannerSettings.builder()
 			.strategy(config.strategy())
 			.openingFragmentTarget(config.openingFragments())
 			.craftWindowSeconds(config.craftWindow())
 			.minFragmentsToCraft(config.minFragmentsToCraft())
 			.desiredGuardians(config.desiredGuardians())
-			.combinationRunes(combo)
 			.balanceWithSavedPoints(config.balanceWithSaved())
 			.maxImbalance(config.maxImbalance())
 			.protectRightBarrier(config.protectRightBarrier())
