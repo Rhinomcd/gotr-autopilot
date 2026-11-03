@@ -269,8 +269,11 @@ public class StateTracker
 	private final Map<Integer, NPC> barrierNpcs = new HashMap<>();
 	// Guardians by NPC index, kept as last seen while out of view.
 	private final Map<Integer, CellTier> guardianTiers = new HashMap<>();
-	// The guardians loaded now, so certainly standing.
-	private final Set<Integer> guardiansInView = new HashSet<>();
+	// The guardians loaded now, so certainly standing until their death animation.
+	private final Map<Integer, NPC> guardiansInView = new HashMap<>();
+	private int lastGuardianCount = -1;
+	// Falls in the HUD's count not yet matched to a guardian.
+	private int pendingGuardianDeaths;
 	private final Map<WorldPoint, Integer> barrierHealth = new HashMap<>();
 	// Barriers whose NPC unloaded with the player too far away to see them, as last seen.
 	private final Map<WorldPoint, BarrierState> unseenBarriers = new HashMap<>();
@@ -339,6 +342,8 @@ public class StateTracker
 		unseenBarriers.clear();
 		guardianTiers.clear();
 		guardiansInView.clear();
+		lastGuardianCount = -1;
+		pendingGuardianDeaths = 0;
 		readInventory(null);
 		readEquipment(null);
 		pouchStored.clear();
@@ -400,11 +405,23 @@ public class StateTracker
 	 */
 	private List<CellTier> guardianTiersMatching(int count)
 	{
-		// Until the HUD has reported, its count of zero says nothing.
-		while (hudTick >= 0 && guardianTiers.size() > count)
+		// Only a fall in the HUD's count is a death: a new guardian shows a tick before the
+		// HUD counts it, and until the HUD has reported, its count of zero says nothing.
+		if (hudTick >= 0)
+		{
+			pendingGuardianDeaths += lastGuardianCount >= 0 ? Math.max(0, lastGuardianCount - count) : 0;
+			lastGuardianCount = count;
+		}
+		// A guardian dying in view despawns on its own and settles the count.
+		boolean dyingInView = guardiansInView.values().stream().anyMatch(NPC::isDead);
+		if (guardianTiers.size() <= count)
+		{
+			pendingGuardianDeaths = 0;
+		}
+		for (; pendingGuardianDeaths > 0 && !dyingInView && guardianTiers.size() > count; pendingGuardianDeaths--)
 		{
 			Integer unseen = guardianTiers.entrySet().stream()
-				.filter(e -> !guardiansInView.contains(e.getKey()))
+				.filter(e -> !guardiansInView.containsKey(e.getKey()))
 				.min(Comparator.comparingInt(e -> e.getValue().getRank()))
 				.map(Map.Entry::getKey).orElse(null);
 			if (unseen == null)
@@ -936,7 +953,7 @@ public class StateTracker
 		else if (CellTier.fromGuardianNpc(id) != null)
 		{
 			guardianTiers.put(npc.getIndex(), CellTier.fromGuardianNpc(id));
-			guardiansInView.add(npc.getIndex());
+			guardiansInView.put(npc.getIndex(), npc);
 		}
 		else if (CellTier.fromBarrierNpc(id) != null)
 		{
