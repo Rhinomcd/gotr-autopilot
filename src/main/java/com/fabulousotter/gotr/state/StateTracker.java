@@ -652,10 +652,7 @@ public class StateTracker
 			altarVisitedThisGame = false;
 			portalOpen = false;
 			portalClosesTick = -1;
-			barrierHealth.clear();
-			unseenBarriers.clear();
-			guardianTiers.clear();
-			guardiansInView.clear();
+			// The barriers and guardians built before the start stand into the game.
 			return;
 		}
 		if (msg.contains("The Portal Guardians will keep their rifts open for another 30 seconds"))
