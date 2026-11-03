@@ -1403,6 +1403,11 @@ public class Planner
 		{
 			return false;
 		}
+		// Solo past the explosion finishes now: a grace portal's points are not worth the risk.
+		if (c.getStrategy() == Strategy.SOLO && s.powerPercent() >= CLOSE_OUT_PERCENT)
+		{
+			return false;
+		}
 		int remaining = s.getMaxPower() - s.getPower();
 		if (s.stonesTotal() < remaining)
 		{
