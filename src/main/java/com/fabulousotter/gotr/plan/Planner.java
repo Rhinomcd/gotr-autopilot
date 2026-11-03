@@ -294,8 +294,9 @@ public class Planner
 		// Solo with its barrier down and no cell: a weak cell from the table rebuilds it fastest.
 		if (soloBarrierDown && s.getChargedCell() == null && s.isWeakCellTablePresent())
 		{
+			String room = s.getFreeSlots() == 0 ? "Drop one essence to make room - " : "";
 			return Instruction.builder().step(Step.PRE_TAKE_WEAK_CELL).headline("Collect a weak cell for the centre barrier")
-				.detail("Nothing stops the creatures until it is back").target(Target.WEAK_CELL_TABLE).urgency(Urgency.HIGH).build();
+				.detail(room + "nothing stops the creatures until it is back").target(Target.WEAK_CELL_TABLE).urgency(Urgency.HIGH).build();
 		}
 		// Solo's broken tile is its only barrier gone: it is mended before any portal.
 		if (c.getStrategy() == Strategy.SOLO && !s.getBrokenTiles().isEmpty() && s.getFragments() >= TILE_REPAIR_FRAGMENTS)
