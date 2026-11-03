@@ -150,6 +150,11 @@ class AltarChooser
 	{
 		int tierA = a.getAltar().getCellTier().getRank();
 		int tierB = b.getAltar().getCellTier().getRank();
+		// Solo lives on its cells: short of guardians or a strong barrier, the cell outranks the balance.
+		if (c.getStrategy() == Strategy.SOLO && tierA != tierB && needsStrongCells(s, c))
+		{
+			return tierA > tierB;
+		}
 		boolean aStrong = tierA >= CellTier.STRONG.getRank() && imbalanceAfter(a, s, c, essence) <= c.getMaxImbalance();
 		boolean bStrong = tierB >= CellTier.STRONG.getRank() && imbalanceAfter(b, s, c, essence) <= c.getMaxImbalance();
 		if (aStrong != bStrong)
@@ -176,6 +181,22 @@ class AltarChooser
 			return tierA > tierB;
 		}
 		return a.getEnergyPerEssence() > b.getEnergyPerEssence();
+	}
+
+	private static boolean needsStrongCells(Snapshot s, PlannerSettings c)
+	{
+		if (s.getGuardiansActive() < c.getDesiredGuardians())
+		{
+			return true;
+		}
+		for (BarrierState barrier : s.getBarriers())
+		{
+			if (barrier.getTier().getRank() < CellTier.STRONG.getRank())
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// Score the trip's yield against imbalance and travel time.

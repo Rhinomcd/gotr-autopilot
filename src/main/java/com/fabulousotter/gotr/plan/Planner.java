@@ -272,8 +272,15 @@ public class Planner
 				return cell;
 			}
 		}
-		// Run grace-portal preparation before the portal instruction while there is time. The
-		// portal comes before a broken tile: it is open for 26 s, the tile keeps.
+		// Solo's broken tile is its only barrier gone: it is mended before any portal.
+		if (c.getStrategy() == Strategy.SOLO && !s.getBrokenTiles().isEmpty() && s.getFragments() >= TILE_REPAIR_FRAGMENTS)
+		{
+			return Instruction.builder().step(Step.REPAIR_TILE).headline("Repair the broken tile")
+				.detail("Before the portal: nothing stops the creatures")
+				.target(Target.CELL_TILE).location(s.getBrokenTiles().get(0)).urgency(Urgency.HIGH).build();
+		}
+		// Run grace-portal preparation before the portal instruction while there is time. In
+		// the other strategies the portal comes before a broken tile: it is open for 26 s, the tile keeps.
 		if (s.isPortalOpen())
 		{
 			int close = s.getSecondsToClose();
