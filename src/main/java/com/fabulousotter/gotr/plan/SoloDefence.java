@@ -70,8 +70,13 @@ class SoloDefence
 	boolean holdsTheRift()
 	{
 		return (overchargedGuardians >= 1 && centreAtLeast(CellTier.WEAK))
-			|| (strongGuardians >= 1 && centreAtLeast(CellTier.MEDIUM))
-			|| strongGuardians >= 2;
+			|| (strongGuardians >= 1 && centreAtLeast(CellTier.MEDIUM));
+	}
+
+	// The guide's floor for crossing the 60% explosion.
+	boolean holdsTheExplosion()
+	{
+		return overchargedGuardians >= 1 && centreAtLeast(CellTier.STRONG);
 	}
 
 	// Strong enough to let the power climb past SAFE_POWER_PERCENT.

@@ -71,6 +71,9 @@ public class Planner
 	private static final double STONE_POWER_PERCENT = 0.38;
 	// The 60% explosion: from here the solo guide pushes straight for 100%.
 	private static final int CLOSE_OUT_PERCENT = 60;
+	private static final int CRITICAL_PERCENT = 25;
+	// An upgrade resets a barrier to half health, so below it the better cell loses nothing.
+	private static final int SOLO_UPGRADE_BELOW_PERCENT = 50;
 	private int fragmentReserve;
 	// Solo without a setup that holds the rift: the portal is not worth the absence.
 	private boolean soloSkipsPortals;
@@ -91,9 +94,10 @@ public class Planner
 
 	public Instruction plan(Snapshot s, PlannerSettings c)
 	{
-		fragmentReserve = c.getStrategy() == Strategy.SOLO ? TILE_REPAIR_FRAGMENTS : 0;
+		fragmentReserve = c.getStrategy() == Strategy.SOLO ? 2 * TILE_REPAIR_FRAGMENTS : 0;
 		soloSkipsPortals = c.getStrategy() == Strategy.SOLO && s.getPhase() == GamePhase.ACTIVE
-			&& (soloTile(s) != null || !s.getBrokenTiles().isEmpty() || !soloDefence(s, c).holdsTheRift() && !weakAltarSet(s));
+			&& (soloTile(s) != null || !s.getBrokenTiles().isEmpty() || soloCentreCritical(s, c)
+				|| !soloDefence(s, c).holdsTheRift() && !weakAltarSet(s));
 		if (!c.isDepositRunes() && s.getDepositableRunes() > 0)
 		{
 			// The runes stay where they are and simply take their inventory slots.
@@ -293,7 +297,9 @@ public class Planner
 
 		// A barrier about to break, or solo's one barrier down, costs more than a portal trip or a power-up gains.
 		boolean soloBarrierDown = c.getStrategy() == Strategy.SOLO && soloTile(s) != null;
-		if (s.getChargedCell() != null && (anyBarrierCritical(s) || soloBarrierDown))
+		boolean soloCentreLow = c.getStrategy() == Strategy.SOLO && s.getChargedCell() != null
+			&& soloCentreNeedsCell(soloCentreBarrier(s, c), s.getChargedCell());
+		if (s.getChargedCell() != null && (anyBarrierCritical(s) || soloBarrierDown || soloCentreLow))
 		{
 			Instruction cell = cellPlan(s, c);
 			if (cell != null)
@@ -302,7 +308,7 @@ public class Planner
 			}
 		}
 		// Solo with its barrier down and no cell: a weak cell from the table rebuilds it fastest.
-		if (soloBarrierDown && s.getChargedCell() == null && s.isWeakCellTablePresent())
+		if (soloBarrierDown && s.getChargedCell() == null)
 		{
 			String room = s.getFreeSlots() == 0 ? "Drop one essence to make room - " : "";
 			return Instruction.builder().step(Step.PRE_TAKE_WEAK_CELL).headline("Collect a weak cell for the centre barrier")
@@ -605,6 +611,11 @@ public class Planner
 		if (portalWait != null)
 		{
 			return portalWait;
+		}
+		// Essence in hand with no room for a mining run: the load goes to an altar, not the remains.
+		if (s.essenceTotal() > 0 && altarsOpen(s) && s.capacity() < MIN_MINING_LEG)
+		{
+			return altarTrip(s, c, s.essenceTotal());
 		}
 		// The opening run is the configured size; with the altars open a run is a load.
 		return mineFragments(s, c, s.isAnyPortalThisGame() || altarsOpen(s) ? s.capacity() : c.getOpeningFragmentTarget());
@@ -1472,61 +1483,85 @@ public class Planner
 	{
 		CellTier tier = s.getChargedCell();
 		Set<Integer> cell = ImmutableSet.of(tier.getCellItemId());
+		boolean slotFree = s.isChisel() && s.getGuardiansActive() < s.getGuardiansMax();
 		WorldPoint rebuild = soloTile(s);
 		if (rebuild != null)
 		{
+			// A barrier rebuilt from a better cell still comes up weak: that cell is a guardian,
+			// and a weak cell from the table rebuilds.
+			if (slotFree && tier.isAtLeast(CellTier.STRONG))
+			{
+				return soloGuardian(tier, cell);
+			}
 			return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Rebuild the centre barrier")
 				.detail("Before any guardian: nothing else stops the creatures")
 				.target(Target.CELL_TILE).location(rebuild).items(cell).build();
 		}
 		BarrierState centre = soloCentreBarrier(s, c);
 		SoloDefence defence = SoloDefence.of(s, centre);
-		boolean slotFree = s.isChisel() && s.getGuardiansActive() < s.getGuardiansMax();
-		boolean critical = centre != null && centre.getHealthPercent() >= 0 && centre.getHealthPercent() < 25;
 		boolean centreBelow = centre != null && centre.getTier().getRank() < tier.getRank();
-		if (!critical)
+		if (soloCentreNeedsCell(centre, tier))
 		{
-			switch (tier)
-			{
-				case OVERCHARGED:
-					if (slotFree && (defence.getOverchargedGuardians() == 0 || !centreBelow))
-					{
-						return soloGuardian(tier, cell);
-					}
-					break;
-				case STRONG:
-					if (slotFree && (defence.getStrongGuardians() == 0 || !centreBelow))
-					{
-						return soloGuardian(tier, cell);
-					}
-					break;
-				case MEDIUM:
-					if (slotFree && s.getGuardiansActive() == 0 && !centreBelow)
-					{
-						return soloGuardian(tier, cell);
-					}
-					break;
-				default:
-					WorldPoint right = weakRightTile(s, c, tier);
-					if (right != null)
-					{
-						return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Build a weak barrier on the far right")
-							.detail(KEEP_WEAK).target(Target.CELL_TILE).location(right).items(cell).build();
-					}
-					if (slotFree && s.getGuardiansActive() == 0)
-					{
-						return soloGuardian(tier, cell);
-					}
-			}
+			return tendCentre(centre, centreBelow, cell);
 		}
-		if (centre == null)
+		if (s.getGuardiansActive() == 0 && slotFree)
 		{
-			return null;
+			return soloGuardian(tier, cell);
 		}
+		switch (tier)
+		{
+			case OVERCHARGED:
+				if (slotFree && (defence.getOverchargedGuardians() == 0 || !centreBelow))
+				{
+					return soloGuardian(tier, cell);
+				}
+				// Both slots taken but not both overcharged: the guide keeps the cell for the next
+				// guardian to fall, once the centre is strong enough to cross 60%.
+				if (!slotFree && defence.getOverchargedGuardians() < 2 && centre != null && centre.getTier().isAtLeast(CellTier.STRONG))
+				{
+					return null;
+				}
+				break;
+			case STRONG:
+				if (slotFree && (defence.getStrongGuardians() == 0 || !centreBelow))
+				{
+					return soloGuardian(tier, cell);
+				}
+				break;
+			case WEAK:
+				WorldPoint right = weakRightTile(s, c, tier);
+				if (right != null)
+				{
+					return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Build a weak barrier on the far right")
+						.detail(KEEP_WEAK).target(Target.CELL_TILE).location(right).items(cell).build();
+				}
+				break;
+			default:
+				break;
+		}
+		return centre == null ? null : tendCentre(centre, centreBelow, cell);
+	}
+
+	/**
+	 * The centre wants this cell now: below a quarter, or below half when the cell raises it,
+	 * as an upgrade resets it to half health whatever it had.
+	 */
+	private static boolean soloCentreNeedsCell(@Nullable BarrierState centre, CellTier tier)
+	{
+		if (centre == null || centre.getHealthPercent() < 0)
+		{
+			return false;
+		}
+		boolean raises = centre.getTier().getRank() < tier.getRank();
+		return centre.getHealthPercent() < (raises ? SOLO_UPGRADE_BELOW_PERCENT : CRITICAL_PERCENT);
+	}
+
+	private static Instruction tendCentre(BarrierState centre, boolean raise, Set<Integer> cell)
+	{
 		String label = centre.getTier().getLabel().toLowerCase();
 		return Instruction.builder()
-			.step(centreBelow ? Step.CELL_BARRIER_UPGRADE : Step.CELL_BARRIER_RECHARGE)
-			.headline((centreBelow ? "Strengthen the " : "Recharge the ") + label + " centre barrier")
+			.step(raise ? Step.CELL_BARRIER_UPGRADE : Step.CELL_BARRIER_RECHARGE)
+			.headline((raise ? "Strengthen the " : "Recharge the ") + label + " centre barrier")
 			.detail("").target(Target.CELL_TILE).location(centre.getLocation()).items(cell).build();
 	}
 
@@ -1556,6 +1591,12 @@ public class Planner
 			}
 		}
 		return null;
+	}
+
+	private static boolean soloCentreCritical(Snapshot s, PlannerSettings c)
+	{
+		BarrierState centre = soloCentreBarrier(s, c);
+		return centre != null && centre.getHealthPercent() >= 0 && centre.getHealthPercent() < CRITICAL_PERCENT;
 	}
 
 	private static SoloDefence soloDefence(Snapshot s, PlannerSettings c)
@@ -1588,12 +1629,22 @@ public class Planner
 	private static boolean soloPowerCapped(Snapshot s, PlannerSettings c)
 	{
 		// Past the 60% explosion the guide closes the game out: holding back only drags it on.
-		if (c.getStrategy() != Strategy.SOLO || soloDefence(s, c).holdsHighPower() || s.powerPercent() >= CLOSE_OUT_PERCENT)
+		if (c.getStrategy() != Strategy.SOLO || s.powerPercent() >= CLOSE_OUT_PERCENT)
 		{
 			return false;
 		}
+		SoloDefence defence = soloDefence(s, c);
 		double after = s.powerPercent() + s.stonesTotal() * STONE_POWER_PERCENT;
-		return after >= SoloDefence.SAFE_POWER_PERCENT && after < 100;
+		if (after >= 100)
+		{
+			return false;
+		}
+		// "Don't go past 60% energy without at least one overcharged guardian and a strong barrier."
+		if (after >= CLOSE_OUT_PERCENT && !defence.holdsTheExplosion())
+		{
+			return true;
+		}
+		return after >= SoloDefence.SAFE_POWER_PERCENT && !defence.holdsHighPower();
 	}
 
 	// Target the cell tile; the barrier NPC obscures its own highlight.
