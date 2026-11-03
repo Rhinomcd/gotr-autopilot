@@ -268,8 +268,9 @@ public class Planner
 			return inHugeRemains(s, false);
 		}
 
-		// A barrier about to break costs more than a portal trip gains.
-		if (s.getChargedCell() != null && anyBarrierCritical(s))
+		// A barrier about to break, or solo's one barrier down, costs more than a portal trip or a power-up gains.
+		boolean soloBarrierDown = c.getStrategy() == Strategy.SOLO && soloTile(s) != null;
+		if (s.getChargedCell() != null && (anyBarrierCritical(s) || soloBarrierDown))
 		{
 			Instruction cell = cellPlan(s, c);
 			if (cell != null)
