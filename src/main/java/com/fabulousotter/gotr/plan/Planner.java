@@ -1127,7 +1127,8 @@ public class Planner
 		int slack = s.getLastStep() == Step.MINE_FRAGMENTS ? 5 : 0;
 		boolean portalTooSoon = s.getSecondsToNextPortal() >= 0
 			&& legSeconds(s, remaining) + craftSeconds + trip > s.getSecondsToNextPortal() + slack;
-		if (portalTooSoon && fragments >= c.getMinFragmentsToCraft())
+		// The portal's essence beats the leg: a far remains can leave the portal out of reach.
+		if (portalTooSoon)
 		{
 			return null;
 		}
