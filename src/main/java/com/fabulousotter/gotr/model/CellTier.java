@@ -37,30 +37,35 @@ import net.runelite.api.gameval.ObjectID;
 @Getter
 public enum CellTier
 {
-	WEAK(1, "Weak", ItemID.GOTR_CELL_TIER1, ObjectID.GOTR_CELL_TILE_TIER1, NpcID.GOTR_BARRIER_NPC_TIER1, NpcID.GOTR_BARRIER_NPC_TIER1_LARGE, 0, 2, 6),
-	MEDIUM(2, "Medium", ItemID.GOTR_CELL_TIER2, ObjectID.GOTR_CELL_TILE_TIER2, NpcID.GOTR_BARRIER_NPC_TIER2, NpcID.GOTR_BARRIER_NPC_TIER2_LARGE, 7, 5, 15),
-	STRONG(3, "Strong", ItemID.GOTR_CELL_TIER3, ObjectID.GOTR_CELL_TILE_TIER3, NpcID.GOTR_BARRIER_NPC_TIER3, NpcID.GOTR_BARRIER_NPC_TIER3_LARGE, 13, 9, 27),
-	OVERCHARGED(4, "Overcharged", ItemID.GOTR_CELL_TIER4, ObjectID.GOTR_CELL_TILE_TIER4, NpcID.GOTR_BARRIER_NPC_TIER4, NpcID.GOTR_BARRIER_NPC_TIER4_LARGE, 22, 15, 45);
+	WEAK(1, "Weak", ItemID.GOTR_CELL_TIER1, ObjectID.GOTR_CELL_TILE_TIER1, NpcID.GOTR_BARRIER_NPC_TIER1, NpcID.GOTR_BARRIER_NPC_TIER1_LARGE, NpcID.GOTR_GUARDIAN_AIR, NpcID.GOTR_GUARDIAN_MIND, 0, 2, 6),
+	MEDIUM(2, "Medium", ItemID.GOTR_CELL_TIER2, ObjectID.GOTR_CELL_TILE_TIER2, NpcID.GOTR_BARRIER_NPC_TIER2, NpcID.GOTR_BARRIER_NPC_TIER2_LARGE, NpcID.GOTR_GUARDIAN_WATER, NpcID.GOTR_GUARDIAN_CHAOS, 7, 5, 15),
+	STRONG(3, "Strong", ItemID.GOTR_CELL_TIER3, ObjectID.GOTR_CELL_TILE_TIER3, NpcID.GOTR_BARRIER_NPC_TIER3, NpcID.GOTR_BARRIER_NPC_TIER3_LARGE, NpcID.GOTR_GUARDIAN_EARTH, NpcID.GOTR_GUARDIAN_DEATH, 13, 9, 27),
+	OVERCHARGED(4, "Overcharged", ItemID.GOTR_CELL_TIER4, ObjectID.GOTR_CELL_TILE_TIER4, NpcID.GOTR_BARRIER_NPC_TIER4, NpcID.GOTR_BARRIER_NPC_TIER4_LARGE, NpcID.GOTR_GUARDIAN_FIRE, NpcID.GOTR_GUARDIAN_BLOOD, 22, 15, 45);
 
 	private static final Map<Integer, CellTier> BY_CELL_ITEM;
 	private static final Map<Integer, CellTier> BY_TILE_OBJECT;
 	private static final Map<Integer, CellTier> BY_BARRIER_NPC;
+	private static final Map<Integer, CellTier> BY_GUARDIAN_NPC;
 
 	static
 	{
 		ImmutableMap.Builder<Integer, CellTier> cells = new ImmutableMap.Builder<>();
 		ImmutableMap.Builder<Integer, CellTier> tiles = new ImmutableMap.Builder<>();
 		ImmutableMap.Builder<Integer, CellTier> barriers = new ImmutableMap.Builder<>();
+		ImmutableMap.Builder<Integer, CellTier> guardians = new ImmutableMap.Builder<>();
 		for (CellTier tier : values())
 		{
 			cells.put(tier.cellItemId, tier);
 			tiles.put(tier.tileObjectId, tier);
 			barriers.put(tier.barrierNpcId, tier);
 			barriers.put(tier.barrierNpcLargeId, tier);
+			guardians.put(tier.elementalGuardianNpcId, tier);
+			guardians.put(tier.catalyticGuardianNpcId, tier);
 		}
 		BY_CELL_ITEM = cells.build();
 		BY_TILE_OBJECT = tiles.build();
 		BY_BARRIER_NPC = barriers.build();
+		BY_GUARDIAN_NPC = guardians.build();
 	}
 
 	private final int rank;
@@ -69,6 +74,9 @@ public enum CellTier
 	private final int tileObjectId;
 	private final int barrierNpcId;
 	private final int barrierNpcLargeId;
+	// A guardian takes the look of its cell's tier: air to fire, or mind, chaos, death and blood.
+	private final int elementalGuardianNpcId;
+	private final int catalyticGuardianNpcId;
 	private final int strengthenEnergy;
 	private final int rechargeEnergy;
 	private final int guardianEnergy;
@@ -88,6 +96,12 @@ public enum CellTier
 	public static CellTier fromTileObject(int objectId)
 	{
 		return BY_TILE_OBJECT.get(objectId);
+	}
+
+	@Nullable
+	public static CellTier fromGuardianNpc(int npcId)
+	{
+		return BY_GUARDIAN_NPC.get(npcId);
 	}
 
 	@Nullable

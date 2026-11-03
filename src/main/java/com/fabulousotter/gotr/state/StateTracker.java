@@ -35,6 +35,7 @@ import com.google.common.collect.ImmutableSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -266,6 +267,8 @@ public class StateTracker
 	private final Map<WorldPoint, GroundObject> cellTiles = new LinkedHashMap<>();
 	@Getter
 	private final Map<Integer, NPC> barrierNpcs = new HashMap<>();
+	// Guardians by NPC index, kept as last seen while out of view.
+	private final Map<Integer, CellTier> guardianTiers = new HashMap<>();
 	private final Map<WorldPoint, Integer> barrierHealth = new HashMap<>();
 	// Barriers whose NPC unloaded with the player too far away to see them, as last seen.
 	private final Map<WorldPoint, BarrierState> unseenBarriers = new HashMap<>();
@@ -332,6 +335,7 @@ public class StateTracker
 	{
 		resetScene();
 		unseenBarriers.clear();
+		guardianTiers.clear();
 		readInventory(null);
 		readEquipment(null);
 		pouchStored.clear();
@@ -384,6 +388,21 @@ public class StateTracker
 		cellTiles.clear();
 		barrierNpcs.clear();
 		barrierHealth.clear();
+	}
+
+	/**
+	 * The guardians standing, weakest first. Ones that died out of view are still remembered,
+	 * so past the HUD's count the weakest are dropped: they are the likeliest to have fallen.
+	 */
+	private List<CellTier> guardianTiersMatching(int count)
+	{
+		List<CellTier> tiers = new ArrayList<>(guardianTiers.values());
+		tiers.sort(Comparator.comparingInt(CellTier::getRank));
+		while (tiers.size() > count)
+		{
+			tiers.remove(0);
+		}
+		return tiers;
 	}
 
 	private void rememberBarrier(NPC npc)
@@ -622,6 +641,7 @@ public class StateTracker
 			portalClosesTick = -1;
 			barrierHealth.clear();
 			unseenBarriers.clear();
+			guardianTiers.clear();
 			return;
 		}
 		if (msg.contains("The Portal Guardians will keep their rifts open for another 30 seconds"))
@@ -902,6 +922,10 @@ public class StateTracker
 		{
 			cordelia = npc;
 		}
+		else if (CellTier.fromGuardianNpc(id) != null)
+		{
+			guardianTiers.put(npc.getIndex(), CellTier.fromGuardianNpc(id));
+		}
 		else if (CellTier.fromBarrierNpc(id) != null)
 		{
 			barrierNpcs.put(npc.getIndex(), npc);
@@ -933,6 +957,15 @@ public class StateTracker
 		else if (npc == cordelia)
 		{
 			cordelia = null;
+		}
+		else if (CellTier.fromGuardianNpc(npc.getId()) != null)
+		{
+			Player me = client.getLocalPlayer();
+			boolean inView = me != null && me.getWorldLocation().distanceTo2D(npc.getWorldLocation()) <= NPC_VIEW_TILES;
+			if (inView)
+			{
+				guardianTiers.remove(npc.getIndex());
+			}
 		}
 		else if (barrierNpcs.remove(npc.getIndex()) != null)
 		{
@@ -1527,6 +1560,7 @@ public class StateTracker
 			.secondsToNextPortal(toNextPortal)
 			.anyPortalThisGame(anyPortalThisGame)
 			.altarVisitedThisGame(altarVisitedThisGame)
+			.guardianTiers(guardianTiersMatching(hudGuardians))
 			.guardiansActive(hudGuardians)
 			.guardiansMax(hudGuardiansMax > 0 ? hudGuardiansMax : 10)
 			.fragments(fragments)

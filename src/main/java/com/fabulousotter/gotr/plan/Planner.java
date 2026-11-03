@@ -67,7 +67,11 @@ public class Planner
 	private static final int SPARE_CELL_TILES = 10;
 	/** A barrier at or above this is as good as full: a cell on it is a spare, placed on the nearest. */
 	private static final int NEEDS_CELL_PERCENT = 90;
+	// Each guardian stone handed in raises the Great Guardian's power by about this much (wiki solo guide).
+	private static final double STONE_POWER_PERCENT = 0.38;
 	private int fragmentReserve;
+	// Solo without a setup that holds the rift: the portal is not worth the absence.
+	private boolean soloSkipsPortals;
 
 	// Casting NPC Contact and choosing the Dark Mage's repair.
 	private static final int NPC_CONTACT_SECONDS = 5;
@@ -86,6 +90,8 @@ public class Planner
 	public Instruction plan(Snapshot s, PlannerSettings c)
 	{
 		fragmentReserve = c.getStrategy() == Strategy.SOLO ? TILE_REPAIR_FRAGMENTS : 0;
+		soloSkipsPortals = c.getStrategy() == Strategy.SOLO && s.getPhase() == GamePhase.ACTIVE
+			&& !soloDefence(s, c).holdsTheRift() && !weakAltarSet(s);
 		if (!c.isDepositRunes() && s.getDepositableRunes() > 0)
 		{
 			// The runes stay where they are and simply take their inventory slots.
@@ -206,12 +212,6 @@ public class Planner
 		boolean closing = s.getPhase() == GamePhase.CLOSING || s.getPhase() == GamePhase.ENDED;
 		if (c.getStrategy() == Strategy.SOLO)
 		{
-			if (s.getGuardiansActive() == 0 && s.isChisel() && !closing)
-			{
-				return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN).headline("Make a weak elemental guardian")
-					.detail("Use the cell on the east essence pile")
-					.target(Target.ESSENCE_PILE_ELEMENTAL).items(cell).build();
-			}
 			WorldPoint tile = soloTile(s);
 			if (tile != null)
 			{
@@ -219,6 +219,12 @@ public class Planner
 				return Instruction.builder().step(Step.PRE_BUILD_BARRIER).headline("Build the centre barrier")
 					.detail("Between the fire and blood portals" + (noChisel.isEmpty() ? "" : " - " + noChisel))
 					.target(Target.CELL_TILE).location(tile).items(cell).build();
+			}
+			if (s.getGuardiansActive() == 0 && s.isChisel() && !closing)
+			{
+				return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN).headline("Make a weak catalytic guardian")
+					.detail("Use the cell on the catalytic essence pile")
+					.target(Target.ESSENCE_PILE_CATALYTIC).items(cell).build();
 			}
 			WorldPoint right = weakRightTile(s, c, s.getChargedCell());
 			if (right != null)
@@ -302,7 +308,7 @@ public class Planner
 					.detail("Wait inside for the next game")
 					.target(Target.PORTAL).urgency(Urgency.HIGH).build();
 			}
-			if (s.capacity() >= c.getPortalMinCapacity() && !s.energyCapped())
+			if (s.capacity() >= c.getPortalMinCapacity() && !s.energyCapped() && !soloSkipsPortals)
 			{
 				Instruction reserve = topUpRepairReserve(s, c, left);
 				if (reserve != null)
@@ -335,6 +341,18 @@ public class Planner
 			}
 		}
 
+		if (s.hasStones() && soloPowerCapped(s, c))
+		{
+			Instruction next = withoutMining(s, c, afterStones(s, c));
+			String why = "Hold your stones: keep power under " + SoloDefence.SAFE_POWER_PERCENT
+				+ "% until you have an overcharged guardian or two strong ones";
+			if (next.getStep() == Step.IDLE_DEFEND)
+			{
+				return Instruction.builder().step(Step.HOLD_STONES).headline("Hold your stones")
+					.detail(why).items(STONE_ITEMS).urgency(Urgency.INFO).build();
+			}
+			return next.toBuilder().detail(next.getDetail().isEmpty() ? why : next.getDetail() + " - " + why).build();
+		}
 		// Apply hold-stones as a modifier so it does not block subsequent instructions.
 		boolean holding = s.hasStones() && shouldHoldStones(s, c);
 		if (s.hasStones() && !holding)
@@ -1194,7 +1212,7 @@ public class Planner
 		int trip = (int) Math.round(AltarChooser.tripSeconds(s, s.getActiveCatalytic() != null ? s.getActiveCatalytic() : Altar.AIR));
 		// A run under way is not cut short for a portal that is only a few seconds too soon.
 		int slack = s.getLastStep() == Step.MINE_FRAGMENTS ? 5 : 0;
-		boolean portalTooSoon = s.getSecondsToNextPortal() >= 0
+		boolean portalTooSoon = s.getSecondsToNextPortal() >= 0 && !soloSkipsPortals
 			&& legSeconds(s, remaining) + craftSeconds + trip > s.getSecondsToNextPortal() + slack;
 		// The portal's essence beats the leg: a far remains can leave the portal out of reach.
 		if (portalTooSoon)
@@ -1354,7 +1372,7 @@ public class Planner
 	private Instruction portalWait(Snapshot s, PlannerSettings c)
 	{
 		int eta = s.getSecondsToNextPortal();
-		if (eta < 0 || eta > c.getPortalWarningSeconds() || s.capacity() < c.getPortalMinCapacity())
+		if (eta < 0 || eta > c.getPortalWarningSeconds() || s.capacity() < c.getPortalMinCapacity() || soloSkipsPortals)
 		{
 			return null;
 		}
@@ -1406,24 +1424,153 @@ public class Planner
 		return "Make " + ("aeiou".indexOf(cell.charAt(0)) >= 0 ? "an " : "a ") + cell + " " + alignment.getLabel().toLowerCase() + " guardian";
 	}
 
+	/**
+	 * Solo, after the wiki's solo guide: the centre barrier takes every creature, so it is never
+	 * left down; an overcharged guardian, then strong ones, are what let the power climb; the
+	 * guardians are catalytic. Upgrading a barrier resets it to half health, so a better cell
+	 * goes on as an upgrade, a matching one as a recharge.
+	 */
+	private Instruction soloCellPlan(Snapshot s, PlannerSettings c)
+	{
+		CellTier tier = s.getChargedCell();
+		Set<Integer> cell = ImmutableSet.of(tier.getCellItemId());
+		WorldPoint rebuild = soloTile(s);
+		if (rebuild != null)
+		{
+			return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Rebuild the centre barrier")
+				.detail("Before any guardian: nothing else stops the creatures")
+				.target(Target.CELL_TILE).location(rebuild).items(cell).build();
+		}
+		BarrierState centre = soloCentreBarrier(s, c);
+		SoloDefence defence = SoloDefence.of(s, centre);
+		boolean slotFree = s.isChisel() && s.getGuardiansActive() < s.getGuardiansMax();
+		boolean critical = centre != null && centre.getHealthPercent() >= 0 && centre.getHealthPercent() < 25;
+		boolean centreBelow = centre != null && centre.getTier().getRank() < tier.getRank();
+		if (!critical)
+		{
+			switch (tier)
+			{
+				case OVERCHARGED:
+					if (slotFree && defence.getOverchargedGuardians() == 0)
+					{
+						return soloGuardian(tier, cell);
+					}
+					break;
+				case STRONG:
+					if (slotFree && (defence.getStrongGuardians() == 0 || !centreBelow))
+					{
+						return soloGuardian(tier, cell);
+					}
+					break;
+				case MEDIUM:
+					if (slotFree && s.getGuardiansActive() == 0 && !centreBelow)
+					{
+						return soloGuardian(tier, cell);
+					}
+					break;
+				default:
+					WorldPoint right = weakRightTile(s, c, tier);
+					if (right != null)
+					{
+						return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Build a weak barrier on the far right")
+							.detail(KEEP_WEAK).target(Target.CELL_TILE).location(right).items(cell).build();
+					}
+					if (slotFree && s.getGuardiansActive() == 0)
+					{
+						return soloGuardian(tier, cell);
+					}
+			}
+		}
+		if (centre == null)
+		{
+			return null;
+		}
+		String label = centre.getTier().getLabel().toLowerCase();
+		return Instruction.builder()
+			.step(centreBelow ? Step.CELL_BARRIER_UPGRADE : Step.CELL_BARRIER_RECHARGE)
+			.headline((centreBelow ? "Strengthen the " : "Recharge the ") + label + " centre barrier")
+			.detail("").target(Target.CELL_TILE).location(centre.getLocation()).items(cell).build();
+	}
+
+	private static Instruction soloGuardian(CellTier tier, Set<Integer> cell)
+	{
+		return Instruction.builder().step(Step.CELL_GUARDIAN)
+			.headline(guardianHeadline(tier, Alignment.CATALYTIC))
+			.detail("Use the cell on the catalytic essence pile")
+			.target(pileFor(Alignment.CATALYTIC)).items(cell).build();
+	}
+
+	// The solo barrier the creatures queue at: on the centre tile, or the one not left weak.
+	@Nullable
+	private static BarrierState soloCentreBarrier(Snapshot s, PlannerSettings c)
+	{
+		WorldPoint centre = soloCentre(s);
+		if (centre != null)
+		{
+			return barrierAt(s.getBarriers(), centre);
+		}
+		BarrierState left = protectedBarrier(s, c);
+		for (BarrierState barrier : s.getBarriers())
+		{
+			if (barrier != left)
+			{
+				return barrier;
+			}
+		}
+		return null;
+	}
+
+	private static SoloDefence soloDefence(Snapshot s, PlannerSettings c)
+	{
+		return SoloDefence.of(s, soloCentreBarrier(s, c));
+	}
+
+	// Every open altar gives a weak cell: nothing at the altars is worth more than the portal.
+	private static boolean weakAltarSet(Snapshot s)
+	{
+		boolean any = false;
+		for (Altar altar : new Altar[]{s.getActiveElemental(), s.getActiveCatalytic()})
+		{
+			if (altar != null && AltarChooser.unusableReason(altar, s) == null)
+			{
+				any = true;
+				if (altar.getCellTier() != CellTier.WEAK)
+				{
+					return false;
+				}
+			}
+		}
+		return any;
+	}
+
+	/**
+	 * Solo: the stones in hand would lift the power past the safe level while the guardians
+	 * could not hold the larger waves. Stones that finish the game always go in.
+	 */
+	private static boolean soloPowerCapped(Snapshot s, PlannerSettings c)
+	{
+		if (c.getStrategy() != Strategy.SOLO || soloDefence(s, c).holdsHighPower())
+		{
+			return false;
+		}
+		double after = s.powerPercent() + s.stonesTotal() * STONE_POWER_PERCENT;
+		return after >= SoloDefence.SAFE_POWER_PERCENT && after < 100;
+	}
+
 	// Target the cell tile; the barrier NPC obscures its own highlight.
 	@Nullable
 	private Instruction cellPlan(Snapshot s, PlannerSettings c)
 	{
+		if (c.getStrategy() == Strategy.SOLO)
+		{
+			return soloCellPlan(s, c);
+		}
 		CellTier tier = s.getChargedCell();
 		Set<Integer> cell = ImmutableSet.of(tier.getCellItemId());
 		boolean slotFree = s.getGuardiansActive() < s.getGuardiansMax();
 		boolean needGuardian = s.getGuardiansActive() < c.getDesiredGuardians();
 		boolean strongEnough = tier.isAtLeast(CellTier.STRONG) || s.getGuardiansActive() == 0;
 		boolean wantGuardian = slotFree && needGuardian && strongEnough;
-		// Solo has one barrier between the creatures and the Great Guardian: it comes back first.
-		WorldPoint soloRebuild = c.getStrategy() == Strategy.SOLO ? soloTile(s) : null;
-		if (soloRebuild != null)
-		{
-			return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Rebuild the centre barrier")
-				.detail("Before any guardian: nothing else stops the creatures")
-				.target(Target.CELL_TILE).location(soloRebuild).items(cell).build();
-		}
 		if (wantGuardian && s.isChisel())
 		{
 			Alignment alignment = shortAlignment(s, c);
@@ -1434,21 +1581,13 @@ public class Planner
 		}
 		// Without a chisel the cell goes to a barrier instead; say why, as the guardian was wanted.
 		String note = wantGuardian ? NO_CHISEL : "";
-		// Solo rebuilds its one barrier whenever it is down, whatever else stands.
-		WorldPoint tile = c.getStrategy() == Strategy.SOLO ? soloTile(s) : s.getBarriers().isEmpty() ? emptyTile(s) : null;
+		WorldPoint tile = s.getBarriers().isEmpty() ? emptyTile(s) : null;
 		if (tile != null)
 		{
 			return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Build a barrier")
 				.detail(note).target(Target.CELL_TILE).location(tile).items(cell).build();
 		}
 		BarrierState target = barrierToTend(s, c, tier);
-		WorldPoint right = weakRightTile(s, c, tier);
-		boolean urgent = target != null && target.getHealthPercent() >= 0 && target.getHealthPercent() < 60;
-		if (right != null && !urgent)
-		{
-			return Instruction.builder().step(Step.CELL_BARRIER_BUILD).headline("Build a weak barrier on the far right")
-				.detail(KEEP_WEAK).target(Target.CELL_TILE).location(right).items(cell).build();
-		}
 		if (target != null)
 		{
 			if (target.getTier().getRank() < tier.getRank())

@@ -89,6 +89,9 @@ public class Snapshot
 	// Whether the player has been inside an altar this game: the opening run is over.
 	boolean altarVisitedThisGame;
 	int guardiansActive;
+	// Tiers of the guardians standing, weakest first, as far as they have been seen.
+	@Builder.Default
+	List<CellTier> guardianTiers = ImmutableList.of();
 	@Builder.Default
 	int guardiansMax = 10;
 

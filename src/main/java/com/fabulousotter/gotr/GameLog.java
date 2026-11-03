@@ -116,7 +116,7 @@ class GameLog
 		m.put("step", i.getStep() + " \"" + i.getHeadline() + "\"");
 		m.put("power", s.powerPercent() + "%");
 		m.put("great guardian health", greatGuardianHealth < 0 ? UNSEEN : greatGuardianHealth + "%");
-		m.put("guardians", s.getGuardiansActive() + "/" + s.getGuardiansMax());
+		m.put("guardians", s.getGuardiansActive() + "/" + s.getGuardiansMax() + " " + s.getGuardianTiers());
 		m.put("barriers", barriers(s));
 		m.put("broken tiles", tiles(s.getBrokenTiles()));
 		m.put("empty tiles", tiles(s.getEmptyTiles()));
