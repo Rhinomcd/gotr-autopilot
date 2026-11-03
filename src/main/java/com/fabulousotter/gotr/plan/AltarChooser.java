@@ -133,8 +133,8 @@ class AltarChooser
 
 	private static boolean better(AltarChoice a, AltarChoice b, Snapshot s, PlannerSettings c, int essence)
 	{
-		int tierA = effectiveTier(a);
-		int tierB = effectiveTier(b);
+		int tierA = a.getAltar().getCellTier().getRank();
+		int tierB = b.getAltar().getCellTier().getRank();
 		boolean aStrong = tierA >= CellTier.STRONG.getRank() && imbalanceAfter(a, s, c, essence) <= c.getMaxImbalance();
 		boolean bStrong = tierB >= CellTier.STRONG.getRank() && imbalanceAfter(b, s, c, essence) <= c.getMaxImbalance();
 		if (aStrong != bStrong)
@@ -206,12 +206,6 @@ class AltarChooser
 		double walkTicks = walk == null ? 25 : walk;
 		double backTicks = back == null ? 20 : back;
 		return ((walkTicks + backTicks) / 2.0 + altar.getInsideTiles() + 4) * 0.6;
-	}
-
-	private static int effectiveTier(AltarChoice choice)
-	{
-		int tier = choice.getAltar().getCellTier().getRank();
-		return choice.getCombination() != null ? Math.min(CellTier.OVERCHARGED.getRank(), tier + 1) : tier;
 	}
 
 	static int projected(Alignment alignment, Snapshot s, PlannerSettings c)

@@ -591,7 +591,7 @@ public class Planner
 			{
 				return stayForClose(s, c, close);
 			}
-			boolean weak = choice.getAltar().getCellTier() == CellTier.WEAK && choice.getCombination() == null;
+			boolean weak = choice.getAltar().getCellTier() == CellTier.WEAK;
 			int rot = s.getAltarSecondsRemaining();
 			if (weak && !choice.isViaTalisman() && rot >= 0 && rot <= c.getWeakAltarWaitSeconds())
 			{
@@ -989,7 +989,7 @@ public class Planner
 				.detail("Wait in the centre")
 				.target(Target.CENTRE_WAIT).urgency(Urgency.INFO).build();
 		}
-		boolean weak = choice.getAltar().getCellTier() == CellTier.WEAK && choice.getCombination() == null;
+		boolean weak = choice.getAltar().getCellTier() == CellTier.WEAK;
 		int rot = s.getAltarSecondsRemaining();
 		if (weak && !choice.isViaTalisman() && rot >= 0 && rot <= c.getWeakAltarWaitSeconds())
 		{
