@@ -96,4 +96,13 @@ public class GameLogTest
 		log.changes(withBarrier(90), MINE.toBuilder().detail("2 / 110").build(), -1, null);
 		assertEquals(Collections.emptyList(), log.changes(withBarrier(90), MINE.toBuilder().detail("4 / 110").build(), -1, null));
 	}
+
+	@Test
+	public void countdownHeadlinesDoNotLogANewStep()
+	{
+		GameLog log = new GameLog();
+		Instruction wait = Instruction.builder().step(Step.WAIT_FOR_ALTAR).headline("Altars open in 3s").build();
+		log.changes(withBarrier(90), wait, -1, null);
+		assertEquals(Collections.emptyList(), log.changes(withBarrier(90), wait.toBuilder().headline("Altars open in 2s").build(), -1, null));
+	}
 }

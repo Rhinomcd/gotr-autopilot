@@ -83,12 +83,13 @@ class GameLog
 		lastPhase = s.getPhase();
 		now.forEach((key, value) ->
 		{
-			if (!Objects.equals(last.get(key), value))
+			boolean countdownOnly = key.equals("step") && Objects.equals(withoutNumbers(last.get(key)), withoutNumbers(value));
+			if (!countdownOnly && !Objects.equals(last.get(key), value))
 			{
 				lines.add(key + ": " + value);
 			}
 		});
-		if (!Objects.equals(last.get("step"), now.get("step")))
+		if (!Objects.equals(withoutNumbers(last.get("step")), withoutNumbers(now.get("step"))))
 		{
 			if (!i.getDetail().isEmpty())
 			{
@@ -189,6 +190,13 @@ class GameLog
 			+ ", necklace " + (s.isBindingNecklaceWorn() ? s.getNecklaceCharges() : "off")
 			+ ", imbue " + s.isMagicImbueActive()
 			+ ", chisel " + s.isChisel();
+	}
+
+	// Headlines such as "Altars open in 3s" count down; only a different instruction is a new step.
+	@Nullable
+	private static String withoutNumbers(@Nullable String step)
+	{
+		return step == null ? null : step.replaceAll("\\d+", "#");
 	}
 
 	private static int bucket(int value, int size)

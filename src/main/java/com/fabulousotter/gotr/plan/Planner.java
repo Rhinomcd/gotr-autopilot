@@ -211,7 +211,7 @@ public class Planner
 			{
 				Alignment alignment = shortAlignment(s, c);
 				return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN)
-					.headline("Make a " + s.getChargedCell().getLabel().toLowerCase() + " " + alignment.getLabel().toLowerCase() + " guardian")
+					.headline(guardianHeadline(s.getChargedCell(), alignment))
 					.detail("Use the cell on the essence pile")
 					.target(pileFor(alignment)).items(cell).build();
 			}
@@ -934,7 +934,7 @@ public class Planner
 		}
 		else if (s.pouchStored() > 0)
 		{
-			detail.append(s.pouchStored()).append(" more in pouches");
+			detail.append(detail.length() > 0 ? " - " : "").append(s.pouchStored()).append(" more in pouches");
 		}
 		return Instruction.builder().step(Step.CRAFT_RUNES).headline(headline).detail(detail.toString())
 			.target(Target.RUNIC_ALTAR).altar(altar).items(items).build();
@@ -1310,6 +1310,12 @@ public class Planner
 			&& !s.isAnyPortalThisGame() && s.getEssence() == 0 && s.getFragments() < c.getOpeningFragmentTarget();
 	}
 
+	private static String guardianHeadline(CellTier tier, Alignment alignment)
+	{
+		String cell = tier.getLabel().toLowerCase();
+		return "Make " + ("aeiou".indexOf(cell.charAt(0)) >= 0 ? "an " : "a ") + cell + " " + alignment.getLabel().toLowerCase() + " guardian";
+	}
+
 	// Target the cell tile; the barrier NPC obscures its own highlight.
 	@Nullable
 	private Instruction cellPlan(Snapshot s, PlannerSettings c)
@@ -1324,7 +1330,7 @@ public class Planner
 		{
 			Alignment alignment = shortAlignment(s, c);
 			return Instruction.builder().step(Step.CELL_GUARDIAN)
-				.headline("Make a " + tier.getLabel().toLowerCase() + " " + alignment.getLabel().toLowerCase() + " guardian")
+				.headline(guardianHeadline(tier, alignment))
 				.detail("Use the cell on the essence pile")
 				.target(pileFor(alignment)).items(cell).build();
 		}
@@ -1363,7 +1369,7 @@ public class Planner
 		{
 			Alignment alignment = shortAlignment(s, c);
 			return Instruction.builder().step(Step.CELL_GUARDIAN)
-				.headline("Make a " + tier.getLabel().toLowerCase() + " " + alignment.getLabel().toLowerCase() + " guardian")
+				.headline(guardianHeadline(tier, alignment))
 				.detail("Use the cell on the essence pile")
 				.target(pileFor(alignment)).items(cell).build();
 		}
