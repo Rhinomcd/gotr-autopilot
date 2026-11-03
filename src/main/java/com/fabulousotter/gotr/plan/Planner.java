@@ -67,6 +67,8 @@ public class Planner
 	private static final int SPARE_CELL_TILES = 10;
 	/** A barrier at or above this is as good as full: a cell on it is a spare, placed on the nearest. */
 	private static final int NEEDS_CELL_PERCENT = 90;
+	// Casting NPC Contact and choosing the Dark Mage's repair.
+	private static final int NPC_CONTACT_SECONDS = 5;
 	/** Smallest load worth an altar trip squeezed in before the last portal of the round. */
 	private static final int MIN_PRE_PORTAL_TRIP = 15;
 	/** Shortest stint at the parts worth walking over for while the altars are closed. */
@@ -97,7 +99,7 @@ public class Planner
 		switch (s.getPhase())
 		{
 			case ACTIVE:
-				return active(s, c);
+				return repairWhileWaiting(s, active(s, c));
 			case CLOSING:
 			case ENDED:
 				return ended(s, c);
@@ -355,6 +357,18 @@ public class Planner
 		return s.energyCapped() || (close >= 0 && close <= (left >= 0 ? left : 30) + GRACE_MARGIN_SECONDS + slack);
 	}
 
+	// A wait in the temple is time enough for NPC Contact, cast from anywhere.
+	private static Instruction repairWhileWaiting(Snapshot s, Instruction next)
+	{
+		boolean waiting = next.getStep() == Step.WAIT_FOR_ALTAR || next.getStep() == Step.WAIT_FOR_PORTAL || next.getStep() == Step.IDLE_DEFEND;
+		if (!waiting || !s.anyPouchDegraded() || !s.isLunarSpellbook() || !s.isRunePouch() || s.getLocation() != Location.TEMPLE)
+		{
+			return next;
+		}
+		return Instruction.builder().step(Step.PRE_REPAIR_POUCHES).headline("Repair your pouches while you wait")
+			.detail("Cast NPC Contact: Dark Mage").items(degradedPouches(s)).urgency(Urgency.INFO).build();
+	}
+
 	@Nullable
 	private Instruction graceResupply(Snapshot s)
 	{
@@ -392,7 +406,13 @@ public class Planner
 			return Instruction.builder().step(Step.PRE_TAKE_CELLS).headline("Collect uncharged cells, then enter the portal")
 				.detail("").target(Target.UNCHARGED_CELL_TABLE).urgency(Urgency.HIGH).build();
 		}
-		if (s.anyPouchDegraded() && errandFits(s, Target.APPRENTICE_CORDELIA, 15, 4, left))
+		boolean contact = s.isLunarSpellbook() && s.isRunePouch();
+		if (s.anyPouchDegraded() && contact && left >= NPC_CONTACT_SECONDS + walkSeconds(s, Target.PORTAL, 15) + 3)
+		{
+			return Instruction.builder().step(Step.PRE_REPAIR_POUCHES).headline("Repair your pouches, then enter the portal")
+				.detail("Cast NPC Contact: Dark Mage").items(degradedPouches(s)).urgency(Urgency.HIGH).build();
+		}
+		if (s.anyPouchDegraded() && !contact && errandFits(s, Target.APPRENTICE_CORDELIA, 15, 4, left))
 		{
 			return Instruction.builder().step(Step.PRE_REPAIR_POUCHES).headline("Repair your pouches, then enter the portal")
 				.detail("").target(Target.APPRENTICE_CORDELIA).items(degradedPouches(s)).urgency(Urgency.HIGH).build();
