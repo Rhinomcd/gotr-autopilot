@@ -122,6 +122,7 @@ public class StateTracker
 	private static final int PORTAL_INTERVAL_SECONDS = 140;
 	private static final int INVENTORY_SIZE = 28;
 	private static final int QUEST_REFRESH_TICKS = 100;
+	private static final int CELL_INTO_GUARDIAN_TICKS = 3;
 
 	private static final Pattern REWARD_TOTAL = Pattern.compile(
 		"Total elemental energy:[^>]+>([\\d,]+).*Total catalytic energy:[^>]+>([\\d,]+)");
@@ -292,6 +293,8 @@ public class StateTracker
 	private int polyElementalStones;
 	private int polyCatalyticStones;
 	private CellTier chargedCell;
+	// The cell stays in the inventory for a few ticks after the guardian takes it.
+	private int cellIntoGuardianTick = -1;
 	private int unchargedCells;
 	private boolean chisel;
 	private boolean pickaxeInInventory;
@@ -351,6 +354,7 @@ public class StateTracker
 		pouchStored.clear();
 		pouchSeenFull.clear();
 		fillClicked = null;
+		cellIntoGuardianTick = -1;
 		scanPending = false;
 		scannedOnce = false;
 		lastLocation = Location.OUTSIDE;
@@ -673,6 +677,11 @@ public class StateTracker
 				phase = GamePhase.COUNTDOWN;
 			}
 			learnBreak(startAtTick);
+			return;
+		}
+		if (msg.contains("You carve out a place for the cell"))
+		{
+			cellIntoGuardianTick = tick;
 			return;
 		}
 		if (msg.contains("The rift becomes active!"))
@@ -1613,7 +1622,7 @@ public class StateTracker
 			.catalyticStones(catalyticStones)
 			.polyElementalStones(polyElementalStones)
 			.polyCatalyticStones(polyCatalyticStones)
-			.chargedCell(chargedCell)
+			.chargedCell(cellIntoGuardianTick >= 0 && tick - cellIntoGuardianTick <= CELL_INTO_GUARDIAN_TICKS ? null : chargedCell)
 			.unchargedCells(unchargedCells)
 			.chisel(chisel)
 			.pickaxe(pickaxeInInventory || pickaxeWorn)
