@@ -94,4 +94,24 @@ public class GameLogTest
 		log.changes(withBarrier(90), wait, -1, null);
 		assertEquals(Collections.emptyList(), log.changes(withBarrier(90), wait.toBuilder().headline("Altars open in 2s").build(), -1, null));
 	}
+
+	@Test
+	public void reportsALossJustShortOfFullPower()
+	{
+		GameLog log = new GameLog();
+		Snapshot active = withBarrier(90).toBuilder().phase(GamePhase.ACTIVE).power(996).maxPower(1000).build();
+		log.changes(active, MINE, -1, null);
+		Snapshot ended = active.toBuilder().phase(GamePhase.ENDED).power(0).build();
+		assertTrue(log.changes(ended, MINE, -1, null).contains("outcome: LOST at 99% power"));
+	}
+
+	@Test
+	public void reportsAWinWhenTheGameClosesAtFullPower()
+	{
+		GameLog log = new GameLog();
+		Snapshot active = withBarrier(90).toBuilder().phase(GamePhase.ACTIVE).power(990).maxPower(1000).build();
+		log.changes(active, MINE, -1, null);
+		Snapshot closing = active.toBuilder().phase(GamePhase.CLOSING).power(1000).build();
+		assertTrue(log.changes(closing, MINE, -1, null).contains("outcome: WON"));
+	}
 }

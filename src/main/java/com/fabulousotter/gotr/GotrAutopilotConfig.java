@@ -397,12 +397,13 @@ public interface GotrAutopilotConfig extends Config
 		keyName = "gameLog",
 		name = "Write game log",
 		description = "Record each game's steps, barriers, guardians, power<br>"
-			+ "and game messages to .runelite/gotr-autopilot/",
+			+ "and game messages to .runelite/gotr-autopilot/<br>"
+			+ "Logs older than two weeks are deleted",
 		section = displaySection,
 		position = 11
 	)
 	default boolean gameLog()
 	{
-		return true;
+		return false;
 	}
 }

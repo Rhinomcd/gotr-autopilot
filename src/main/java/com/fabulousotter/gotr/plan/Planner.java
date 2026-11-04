@@ -178,6 +178,15 @@ public class Planner
 			return Instruction.builder().step(Step.ENTER_PORTAL).headline("Enter the portal and wait inside" + direction(s))
 				.detail("Wait inside for the next game").target(Target.PORTAL).urgency(Urgency.HIGH).build();
 		}
+		// Solo starts with its barrier up whatever the clock: without it the opening run is undefended.
+		if (centre != null && s.getChargedCell() != null)
+		{
+			Instruction spend = spendCellBeforeGame(s, c, when);
+			if (spend != null)
+			{
+				return spend;
+			}
+		}
 		if (s.getDepositableRunes() > 0)
 		{
 			return depositRunes(s);
@@ -203,9 +212,7 @@ public class Planner
 			return Instruction.builder().step(Step.PRE_TAKE_WEAK_CELL).headline("Collect a weak cell")
 				.detail(when).target(Target.WEAK_CELL_TABLE).build();
 		}
-		// Solo starts with its barrier up whatever the clock: without it the opening run is undefended.
-		boolean soloBarrierMissing = c.getStrategy() == Strategy.SOLO && soloTile(s) != null;
-		if ((!positioning || soloBarrierMissing) && s.getChargedCell() != null)
+		if (!positioning && s.getChargedCell() != null)
 		{
 			Instruction spend = spendCellBeforeGame(s, c, when);
 			if (spend != null)
@@ -261,8 +268,7 @@ public class Planner
 				.detail(when)
 				.target(Target.CELL_TILE).location(emptyTile(s)).items(cell).build();
 		}
-		if (s.getGuardiansActive() < Math.max(c.getDesiredGuardians(), s.getGuardiansMax()) && s.isChisel()
-			&& s.getGuardiansActive() < s.getGuardiansMax() && !closing)
+		if (s.getGuardiansActive() < Math.min(c.getDesiredGuardians(), s.getGuardiansMax()) && s.isChisel() && !closing)
 		{
 			Alignment alignment = shortAlignment(s, c);
 			return Instruction.builder().step(Step.PRE_BUILD_GUARDIAN)
@@ -276,7 +282,8 @@ public class Planner
 	private Instruction ended(Snapshot s, PlannerSettings c)
 	{
 		// With a portal open the stones wait their turn among the errands that fit before it closes.
-		if (s.hasStones() && s.getLocation() == Location.TEMPLE && !s.isPortalOpen())
+		// Once the rifts shut at the end there is no guardian to take them.
+		if (s.hasStones() && s.getPhase() == GamePhase.CLOSING && s.getLocation() == Location.TEMPLE && !s.isPortalOpen())
 		{
 			return Instruction.builder().step(Step.POWER_UP).headline("Hand in your stones now")
 				.detail("The rift is closing").target(Target.GREAT_GUARDIAN).items(STONE_ITEMS).urgency(Urgency.HIGH).build();
@@ -723,7 +730,7 @@ public class Planner
 			}
 			boolean weak = choice.getAltar().getCellTier() == CellTier.WEAK;
 			int rot = s.getAltarSecondsRemaining();
-			if (weak && !choice.isViaTalisman() && rot >= 0 && rot <= c.getWeakAltarWaitSeconds())
+			if (weak && !choice.isViaTalisman() && c.getWeakAltarWaitSeconds() > 0 && rot >= 0 && rot <= c.getWeakAltarWaitSeconds())
 			{
 				return weakAltarWait(s, choice, rot);
 			}
@@ -1037,9 +1044,9 @@ public class Planner
 		if (combo != null)
 		{
 			headline = "Craft " + combo.getLabel().toLowerCase() + " runes";
-			Altar base = s.baseRuneFor(altar);
+			Altar base = AltarChooser.combinationBase(altar, s);
 			items.add(base.getRuneItemId());
-			if (!s.isMagicImbueActive() && s.isLunarSpellbook())
+			if (!s.isMagicImbueActive() && !s.getRuneTalismans().contains(base))
 			{
 				detail.append("Cast Magic Imbue, then use ");
 			}
@@ -1144,7 +1151,7 @@ public class Planner
 		}
 		boolean weak = choice.getAltar().getCellTier() == CellTier.WEAK;
 		int rot = s.getAltarSecondsRemaining();
-		if (weak && !choice.isViaTalisman() && rot >= 0 && rot <= c.getWeakAltarWaitSeconds())
+		if (weak && !choice.isViaTalisman() && c.getWeakAltarWaitSeconds() > 0 && rot >= 0 && rot <= c.getWeakAltarWaitSeconds())
 		{
 			return weakAltarWait(s, choice, rot);
 		}
@@ -1444,8 +1451,7 @@ public class Planner
 		{
 			return false;
 		}
-		int remaining = s.getMaxPower() - s.getPower();
-		if (s.stonesTotal() < remaining)
+		if (!stonesFinish(s))
 		{
 			return false;
 		}
@@ -1652,6 +1658,16 @@ public class Planner
 		return any;
 	}
 
+	private static double powerAfterStones(Snapshot s)
+	{
+		return s.powerPercent() + s.stonesTotal() * STONE_POWER_PERCENT;
+	}
+
+	private static boolean stonesFinish(Snapshot s)
+	{
+		return powerAfterStones(s) >= 100;
+	}
+
 	/**
 	 * Solo: the stones in hand would lift the power past the safe level while the guardians
 	 * could not hold the larger waves. Stones that finish the game always go in.
@@ -1663,12 +1679,12 @@ public class Planner
 		{
 			return false;
 		}
-		SoloDefence defence = soloDefence(s, c);
-		double after = s.powerPercent() + s.stonesTotal() * STONE_POWER_PERCENT;
-		if (after >= 100)
+		if (stonesFinish(s))
 		{
 			return false;
 		}
+		SoloDefence defence = soloDefence(s, c);
+		double after = powerAfterStones(s);
 		// "Don't go past 60% energy without at least one overcharged guardian and a strong barrier."
 		if (after >= CLOSE_OUT_PERCENT && !defence.holdsTheExplosion())
 		{
@@ -1948,7 +1964,7 @@ public class Planner
 	 * Creatures do not attack it, so it is not tended even while it is the only one standing.
 	 */
 	@Nullable
-	private static BarrierState protectedBarrier(Snapshot s, PlannerSettings c)
+	static BarrierState protectedBarrier(Snapshot s, PlannerSettings c)
 	{
 		WorldPoint tile = protectedTile(s, c);
 		// With the solo barrier's place unknown, a lone barrier may well be it.

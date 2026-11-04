@@ -58,6 +58,12 @@ public enum Altar
 	private static final Map<Integer, Altar> BY_EXIT_PORTAL;
 	private static final Map<Integer, Altar> BY_TALISMAN;
 	private static final Map<Integer, Altar> BY_RUNE;
+	// The plain talismans that bind a combination rune at an elemental altar.
+	private static final Map<Integer, Altar> BY_RUNE_TALISMAN = ImmutableMap.of(
+		ItemID.AIR_TALISMAN, AIR,
+		ItemID.WATER_TALISMAN, WATER,
+		ItemID.EARTH_TALISMAN, EARTH,
+		ItemID.FIRE_TALISMAN, FIRE);
 
 	static
 	{
@@ -130,6 +136,12 @@ public enum Altar
 	public static Altar fromTalisman(int itemId)
 	{
 		return BY_TALISMAN.get(itemId);
+	}
+
+	@Nullable
+	public static Altar fromRuneTalisman(int itemId)
+	{
+		return BY_RUNE_TALISMAN.get(itemId);
 	}
 
 	@Nullable

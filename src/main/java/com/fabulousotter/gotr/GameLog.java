@@ -76,7 +76,8 @@ class GameLog
 		}
 		if (s.getPhase() == GamePhase.ACTIVE)
 		{
-			lastActivePower = s.powerPercent();
+			// Rounded down: 99.6% is still a loss.
+			lastActivePower = s.getMaxPower() > 0 ? s.getPower() * 100 / s.getMaxPower() : 0;
 		}
 		lastPhase = s.getPhase();
 		now.forEach((key, value) ->
